@@ -6,7 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
-import time
+import threading
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -28,24 +28,34 @@ def load_config() -> Dict[str, Any]:
         return json.load(f)
 
 
-def play_mp3(data: bytes) -> None:
-    """Play MP3 data using an available backend."""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
+    """Wait for the process to finish then delete the temporary file."""
+    proc.wait()
     try:
-        tmp.write(data)
-        tmp.flush()
-        tmp.close()
-        if sys.platform.startswith("win"):
-            subprocess.run([
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"Start-Process -FilePath '{tmp.name}' -Wait"
-            ], check=True)
-        else:
-            subprocess.run(["mpg123", "-q", tmp.name], check=True)
-    finally:
-        os.unlink(tmp.name)
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+def play_mp3(data: bytes) -> None:
+    """Play MP3 data using an available backend without blocking."""
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp.write(data)
+    tmp.flush()
+    tmp.close()
+
+    if sys.platform.startswith("win"):
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            f"(New-Object Media.SoundPlayer '{tmp.name}').PlaySync()",
+        ]
+    else:
+        command = ["mpg123", "-q", tmp.name]
+
+    proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    threading.Thread(target=_cleanup_process, args=(proc, tmp.name), daemon=True).start()
 
 
 async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 1.0) -> bytes:
