@@ -4,6 +4,10 @@ import pathlib
 import threading
 import sys
 import tkinter as tk
+from typing import Optional
+
+import pystray
+from PIL import Image, ImageDraw
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -72,23 +76,64 @@ class WSClient:
             pass
 
 
+def create_image() -> Image.Image:
+    """Return a simple tray icon image."""
+    img = Image.new("RGBA", (64, 64), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((16, 16, 48, 48), fill="black")
+    return img
+
+
 def main():
     root = tk.Tk()
     root.title("WS Client")
     status_var = tk.StringVar(value="Starting")
     tk.Label(root, textvariable=status_var, width=40).pack(padx=20, pady=20)
 
-    def update_status(text):
+    def update_status(text: str) -> None:
         root.after(0, status_var.set, text)
 
     client = WSClient(update_status)
     client.start()
 
-    def on_close():
+    icon: Optional[pystray.Icon] = None
+
+    def show_window() -> None:
+        root.after(0, root.deiconify)
+
+    def hide_window() -> None:
+        root.after(0, root.withdraw)
+
+    def toggle_window(icon: pystray.Icon, item=None) -> None:  # noqa: D401
+        if root.state() == "withdrawn":
+            show_window()
+        else:
+            hide_window()
+
+    def on_quit(icon: pystray.Icon, item) -> None:
+        icon.visible = False
         client.stop()
-        root.destroy()
+        root.after(0, root.destroy)
+
+    icon = pystray.Icon(
+        "ws_client",
+        create_image(),
+        menu=pystray.Menu(
+            pystray.MenuItem("Show", lambda icon, item: show_window()),
+            pystray.MenuItem("Hide", lambda icon, item: hide_window()),
+            pystray.MenuItem("Quit", on_quit),
+        ),
+    )
+    icon.visible = True
+    icon.when_clicked = toggle_window
+    root.after(0, root.withdraw)  # start hidden
+
+    def on_close() -> None:
+        hide_window()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
+
+    threading.Thread(target=icon.run, daemon=True).start()
     root.mainloop()
 
 
