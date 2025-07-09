@@ -4,7 +4,7 @@
 EnterCRM API & WebSocket *Python Client*
 ────────────────────────────────────────
 • 서버 WebSocket(/ws) → echo·ping 수신
-• WS 연결 성공 후 HTTP /ping 호출
+• WS 연결 성공 후 HTTP /ping 및 /broadcast-schedules 호출
 • 설정은 실행 경로의 client.cfg(JSON)에서 불러옴
 • 비동기 실행:  python3 client.py
 
@@ -66,7 +66,7 @@ if not API_KEY:
 
 
 async def websocket_demo() -> None:
-    """WS 연결 후 echo·ping 수신, 이후 HTTP /ping 호출."""
+    """WS 연결 후 echo·ping 수신, 이후 HTTP /ping 및 /broadcast-schedules 호출."""
     ws_url = (
         HOST.replace("http", "ws")
         + f"/ws?api_key={API_KEY}&device_id={DEVICE_ID}"
@@ -101,6 +101,11 @@ async def websocket_demo() -> None:
             r = await cli.get("/ping", headers={"X-API-Key": API_KEY})
             r.raise_for_status()
             print("[HTTP] /ping →", r.json())
+
+            # 서버와의 연결에 성공하면 방송 예약 목록을 가져온다
+            r = await cli.get("/broadcast-schedules", headers={"X-API-Key": API_KEY})
+            r.raise_for_status()
+            print("[HTTP] /broadcast-schedules →", r.json())
 
         # 4) 5초 대기 후 WS 종료
         await asyncio.sleep(5)

@@ -7,6 +7,8 @@ import tkinter as tk
 
 """Simple Tk GUI client with a system tray icon.
 
+서버 연결 후 `/broadcast-schedules` 를 호출해 방송 예약 목록을 출력한다.
+
 Dependencies::
     pip install pystray pillow
 """
@@ -14,6 +16,7 @@ Dependencies::
 from PIL import Image, ImageDraw
 import pystray
 
+import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -75,6 +78,13 @@ class WSClient:
     async def handle_ws(self, ws):
         try:
             await ws.send(json.dumps({"hello": "world"}))
+
+            # 연결 성공 후 방송 예약 목록을 요청한다
+            async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
+                r = await cli.get("/broadcast-schedules", headers={"X-API-Key": API_KEY})
+                r.raise_for_status()
+                print("[HTTP] /broadcast-schedules →", r.json())
+
             while not self.stop_event.is_set():
                 await ws.recv()
         except ConnectionClosed:
