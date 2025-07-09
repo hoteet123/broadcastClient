@@ -102,6 +102,11 @@ async def websocket_demo() -> None:
             r.raise_for_status()
             print("[HTTP] /ping →", r.json())
 
+            # 3-1) 연결 성공 후 방송 예약 목록 조회
+            r = await cli.get("/broadcast-schedules", headers={"X-API-Key": API_KEY})
+            r.raise_for_status()
+            print("[HTTP] /broadcast-schedules →", r.json())
+
         # 4) 5초 대기 후 WS 종료
         await asyncio.sleep(5)
         await ws.close()
