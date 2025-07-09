@@ -5,6 +5,15 @@ import threading
 import sys
 import tkinter as tk
 
+"""Simple Tk GUI client with a system tray icon.
+
+Dependencies::
+    pip install pystray pillow
+"""
+
+from PIL import Image, ImageDraw
+import pystray
+
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -78,15 +87,46 @@ def main():
     status_var = tk.StringVar(value="Starting")
     tk.Label(root, textvariable=status_var, width=40).pack(padx=20, pady=20)
 
+    def create_image():
+        image = Image.new("RGB", (64, 64), "white")
+        d = ImageDraw.Draw(image)
+        d.rectangle((16, 16, 48, 48), fill="black")
+        return image
+
+    def show_window():
+        root.after(0, root.deiconify)
+
+    def hide_window():
+        root.after(0, root.withdraw)
+
+    def toggle_window(icon, item):
+        if root.state() == "withdrawn":
+            show_window()
+        else:
+            hide_window()
+
+    def on_close():
+        client.stop()
+        icon.stop()
+        root.destroy()
+
+    tray_menu = pystray.Menu(
+        pystray.MenuItem(
+            lambda text: "Hide" if root.state() != "withdrawn" else "Show",
+            toggle_window,
+        ),
+        pystray.MenuItem("Quit", lambda icon, item: root.after(0, on_close)),
+    )
+
+    icon = pystray.Icon("ws_client", create_image(), "WS Client", menu=tray_menu)
+
     def update_status(text):
         root.after(0, status_var.set, text)
 
     client = WSClient(update_status)
     client.start()
 
-    def on_close():
-        client.stop()
-        root.destroy()
+    threading.Thread(target=icon.run, daemon=True).start()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     root.mainloop()
