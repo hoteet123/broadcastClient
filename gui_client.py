@@ -5,6 +5,9 @@ import threading
 import sys
 import tkinter as tk
 
+from PIL import Image, ImageDraw
+import pystray
+
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -72,6 +75,14 @@ class WSClient:
             pass
 
 
+def create_image() -> Image.Image:
+    """Create a simple tray icon image."""
+    image = Image.new("RGB", (64, 64), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((16, 16, 48, 48), fill="black")
+    return image
+
+
 def main():
     root = tk.Tk()
     root.title("WS Client")
@@ -84,8 +95,34 @@ def main():
     client = WSClient(update_status)
     client.start()
 
+    tray_icon = None
+    visible = True
+
+    def toggle(icon, item):
+        nonlocal visible
+        if visible:
+            root.withdraw()
+            visible = False
+        else:
+            root.deiconify()
+            root.focus_force()
+            visible = True
+        icon.update_menu()
+
+    def item_title():
+        return "Hide" if visible else "Show"
+
+    tray_icon = pystray.Icon(
+        "ws-client",
+        create_image(),
+        "WS Client",
+        menu=pystray.Menu(pystray.MenuItem(item_title, toggle))
+    )
+    threading.Thread(target=tray_icon.run, daemon=True).start()
+
     def on_close():
         client.stop()
+        tray_icon.stop()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
