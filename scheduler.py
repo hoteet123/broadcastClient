@@ -45,17 +45,25 @@ def play_mp3(data: bytes) -> None:
     tmp.close()
 
     if sys.platform.startswith("win"):
-        command = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            f"(New-Object Media.SoundPlayer '{tmp.name}').PlaySync()",
-        ]
+        def play_and_cleanup(path: str) -> None:
+            try:
+                import ctypes
+                alias = f"mp3_{os.getpid()}_{threading.get_ident()}"
+                mci = ctypes.windll.winmm.mciSendStringW
+                mci(f'open "{path}" type mpegvideo alias {alias}', None, 0, None)
+                mci(f'play {alias} wait', None, 0, None)
+                mci(f'close {alias}', None, 0, None)
+            finally:
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
+
+        threading.Thread(target=play_and_cleanup, args=(tmp.name,), daemon=True).start()
     else:
         command = ["mpg123", "-q", tmp.name]
-
-    proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    threading.Thread(target=_cleanup_process, args=(proc, tmp.name), daemon=True).start()
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=_cleanup_process, args=(proc, tmp.name), daemon=True).start()
 
 
 async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 1.0) -> bytes:
