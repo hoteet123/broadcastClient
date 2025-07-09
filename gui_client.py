@@ -5,6 +5,8 @@ import threading
 import sys
 import tkinter as tk
 
+import scheduler
+
 """Simple Tk GUI client with a system tray icon.
 
 서버 연결 후 `/broadcast-schedules` 를 호출해 방송 예약 목록을 출력한다.
@@ -48,12 +50,15 @@ class WSClient:
         self.update_status = update_status
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
+        self.scheduler_thread = None
 
     def start(self):
         self.thread.start()
 
     def stop(self):
         self.stop_event.set()
+        if self.scheduler_thread and self.scheduler_thread.is_alive():
+            self.scheduler_thread.join(timeout=1)
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -83,7 +88,16 @@ class WSClient:
             async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
                 r = await cli.get("/broadcast-schedules", headers={"X-API-Key": API_KEY})
                 r.raise_for_status()
-                print("[HTTP] /broadcast-schedules →", r.json())
+                data = r.json()
+                print("[HTTP] /broadcast-schedules →", data)
+                schedules = data.get("schedules", [])
+                if schedules and not self.scheduler_thread:
+                    self.scheduler_thread = threading.Thread(
+                        target=scheduler.run,
+                        args=(schedules,),
+                        daemon=True,
+                    )
+                    self.scheduler_thread.start()
 
             while not self.stop_event.is_set():
                 await ws.recv()

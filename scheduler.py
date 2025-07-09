@@ -99,9 +99,8 @@ async def fetch_schedules(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return data.get("schedules", [])
 
 
-async def run_scheduler() -> None:
-    cfg = load_config()
-    schedules = await fetch_schedules(cfg)
+async def scheduler_loop(schedules: List[Dict[str, Any]]) -> None:
+    """Run scheduled playback based on a list of schedule dictionaries."""
     for sch in schedules:
         sch["next_run"] = compute_next_run(sch)
     while True:
@@ -110,10 +109,25 @@ async def run_scheduler() -> None:
             nr = sch.get("next_run")
             if nr and nr <= now:
                 print(f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}")
-                audio = await tts_request(sch.get("TTSContent", ""), speed=sch.get("Speed", 1.0), pitch=sch.get("Pitch", 1.0))
+                audio = await tts_request(
+                    sch.get("TTSContent", ""),
+                    speed=sch.get("Speed", 1.0),
+                    pitch=sch.get("Pitch", 1.0),
+                )
                 play_mp3(audio)
                 sch["next_run"] = compute_next_run(sch, now + dt.timedelta(seconds=1))
         await asyncio.sleep(1)
+
+
+async def run_scheduler() -> None:
+    cfg = load_config()
+    schedules = await fetch_schedules(cfg)
+    await scheduler_loop(schedules)
+
+
+def run(schedules: List[Dict[str, Any]]) -> None:
+    """Blocking helper to run scheduler_loop in the current thread."""
+    asyncio.run(scheduler_loop(schedules))
 
 
 if __name__ == "__main__":
