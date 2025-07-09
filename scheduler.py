@@ -45,12 +45,14 @@ def play_mp3(data: bytes) -> None:
     tmp.close()
 
     if sys.platform.startswith("win"):
-        command = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            f"(New-Object Media.SoundPlayer '{tmp.name}').PlaySync()",
-        ]
+        fname = tmp.name.replace("'", "''")
+        ps_script = (
+            f"$player = New-Object -ComObject WMPlayer.OCX;"
+            f"$player.URL = '{fname}';"
+            "$player.controls.play();"
+            "while ($player.playState -ne 1) { Start-Sleep -Milliseconds 100 }"
+        )
+        command = ["powershell", "-NoProfile", "-Command", ps_script]
     else:
         command = ["mpg123", "-q", tmp.name]
 
