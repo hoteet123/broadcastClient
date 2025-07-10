@@ -15,8 +15,13 @@ Dependencies::
     pip install pystray pillow
 """
 
-from PIL import Image, ImageDraw
-import pystray
+try:
+    from PIL import Image, ImageDraw
+    import pystray
+    HAS_PYSTRAY = True
+except Exception as e:  # noqa: E722  (pystray may raise non-ImportError)
+    print(f"pystray not available: {e}. Running without system tray icon.")
+    HAS_PYSTRAY = False
 
 import httpx
 import websockets
@@ -129,20 +134,24 @@ def main():
         else:
             hide_window()
 
+    icon = None
+
     def on_close():
         client.stop()
-        icon.stop()
+        if icon:
+            icon.stop()
         root.destroy()
 
-    tray_menu = pystray.Menu(
-        pystray.MenuItem(
-            lambda text: "Hide" if root.state() != "withdrawn" else "Show",
-            toggle_window,
-        ),
-        pystray.MenuItem("Quit", lambda icon, item: root.after(0, on_close)),
-    )
+    if HAS_PYSTRAY:
+        tray_menu = pystray.Menu(
+            pystray.MenuItem(
+                lambda text: "Hide" if root.state() != "withdrawn" else "Show",
+                toggle_window,
+            ),
+            pystray.MenuItem("Quit", lambda icon, item: root.after(0, on_close)),
+        )
 
-    icon = pystray.Icon("ws_client", create_image(), "WS Client", menu=tray_menu)
+        icon = pystray.Icon("ws_client", create_image(), "WS Client", menu=tray_menu)
 
     def update_status(text):
         root.after(0, status_var.set, text)
@@ -150,7 +159,8 @@ def main():
     client = WSClient(update_status)
     client.start()
 
-    threading.Thread(target=icon.run, daemon=True).start()
+    if icon:
+        threading.Thread(target=icon.run, daemon=True).start()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
     root.mainloop()
