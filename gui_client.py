@@ -70,6 +70,7 @@ class WSClient:
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.scheduler_thread = None
         self.device_id = DEVICE_ID
+        self.loop = None
 
     def start(self):
         self.thread.start()
@@ -80,9 +81,9 @@ class WSClient:
             self.scheduler_thread.join(timeout=1)
 
     def run(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.connect_loop())
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_until_complete(self.connect_loop())
 
     async def connect_loop(self):
         backoff = 1
@@ -100,6 +101,27 @@ class WSClient:
                 self.update_status(f"Disconnected: retry in {backoff}s")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
+
+    async def play_schedule_once(self, schedule_id: int, *, test: bool = False) -> None:
+        """Fetch a schedule by ID and play it one time."""
+        try:
+            async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
+                r = await cli.get(f"/broadcast-schedules/{schedule_id}", headers={"X-API-Key": API_KEY})
+                r.raise_for_status()
+                sch = r.json().get("schedule")
+        except Exception as e:
+            print(f"[HTTP] failed to fetch schedule {schedule_id}: {e}")
+            return
+        if not sch:
+            print(f"[HTTP] schedule not found: {schedule_id}")
+            return
+        print(f"Playing schedule {schedule_id} ({'test' if test else 'normal'})")
+        audio = await scheduler.tts_request(
+            sch.get("TTSContent", ""),
+            speed=sch.get("Speed", 1.0),
+            pitch=sch.get("Pitch", 1.0),
+        )
+        scheduler.play_mp3(audio)
 
     async def handle_ws(self, ws):
         try:
@@ -135,6 +157,11 @@ class WSClient:
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
+                elif isinstance(data, dict) and data.get("type") == "play_schedule":
+                    schedule_id = data.get("schedule_id")
+                    test = bool(data.get("test"))
+                    if schedule_id is not None:
+                        await self.play_schedule_once(schedule_id, test=test)
                 else:
                     print("[WS]", data)
         except ConnectionClosed:
