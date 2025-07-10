@@ -135,6 +135,18 @@ class WSClient:
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
+                elif isinstance(data, dict) and data.get("type") == "test-broadcast":
+                    sch_id = data.get("schedule_id")
+                    if sch_id is not None:
+                        try:
+                            async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
+                                r = await cli.get(f"/broadcast-schedules/{sch_id}", headers={"X-API-Key": API_KEY})
+                                r.raise_for_status()
+                                sch = r.json().get("schedule")
+                            if sch:
+                                await scheduler.play_schedule_once(sch)
+                        except Exception as e:
+                            print(f"[WS] test-broadcast failed: {e}")
                 else:
                     print("[WS]", data)
         except ConnectionClosed:

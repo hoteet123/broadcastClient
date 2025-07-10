@@ -117,6 +117,33 @@ async def fetch_schedules(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return data.get("schedules", [])
 
 
+async def fetch_schedule(cfg: Dict[str, Any], schedule_id: int) -> Optional[Dict[str, Any]]:
+    """Fetch a single schedule dictionary by ID."""
+    base_url = cfg["HOST"].rstrip("/")
+    headers = {"X-API-Key": cfg["API_KEY"]}
+    path = f"/broadcast-schedules/{schedule_id}"
+    async with httpx.AsyncClient(base_url=base_url, http2=True, timeout=5.0) as cli:
+        r = await cli.get(path, headers=headers)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        data = r.json()
+    if isinstance(data, dict):
+        return data.get("schedule") or data
+    return None
+
+
+async def play_schedule_once(schedule: Dict[str, Any]) -> None:
+    """Play TTS broadcast for a single schedule immediately."""
+    print(f"Playing schedule {schedule.get('ScheduleID')}: {schedule.get('Title')}")
+    audio = await tts_request(
+        schedule.get("TTSContent", ""),
+        speed=schedule.get("Speed", 1.0),
+        pitch=schedule.get("Pitch", 1.0),
+    )
+    play_mp3(audio)
+
+
 async def scheduler_loop(schedules: List[Dict[str, Any]]) -> None:
     """Run scheduled playback based on a list of schedule dictionaries."""
     for sch in schedules:
