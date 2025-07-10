@@ -4,6 +4,7 @@ import pathlib
 import threading
 import sys
 import tkinter as tk
+import uuid
 
 import scheduler
 
@@ -30,6 +31,12 @@ from websockets.exceptions import ConnectionClosed
 CFG_PATH = pathlib.Path(__file__).with_name("client.cfg")
 
 
+def get_mac_address() -> str:
+    """Return the MAC address as a hex string without separators."""
+    mac = uuid.getnode()
+    return f"{mac:012X}"
+
+
 def load_config():
     if not CFG_PATH.exists():
         sample = {
@@ -48,6 +55,7 @@ cfg = load_config()
 HOST = cfg["HOST"].rstrip("/")
 API_KEY = cfg["API_KEY"]
 DEVICE_ID = cfg["DEVICE_ID"]
+MAC_ADDRESS = get_mac_address()
 
 
 class WSClient:
@@ -71,7 +79,9 @@ class WSClient:
         loop.run_until_complete(self.connect_loop())
 
     async def connect_loop(self):
-        ws_url = HOST.replace("http", "ws") + f"/ws?api_key={API_KEY}&device_id={DEVICE_ID}"
+        ws_url = HOST.replace("http", "ws") + (
+            f"/ws?api_key={API_KEY}&device_id={DEVICE_ID}&mac={MAC_ADDRESS}"
+        )
         backoff = 1
         while not self.stop_event.is_set():
             try:
@@ -87,7 +97,7 @@ class WSClient:
 
     async def handle_ws(self, ws):
         try:
-            await ws.send(json.dumps({"hello": "world"}))
+            await ws.send(json.dumps({"hello": "world", "mac": MAC_ADDRESS}))
 
             # 연결 성공 후 방송 예약 목록을 요청한다
             async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:

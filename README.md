@@ -29,6 +29,10 @@ Edit `client.cfg` with your `HOST`, `API_KEY` and `DEVICE_ID`, then run:
 python gui_client.py
 ```
 
+The client automatically detects the machine's MAC address and includes it when
+connecting to the WebSocket server so each instance can be uniquely
+identified.
+
 or just the scheduler:
 
 ```bash
