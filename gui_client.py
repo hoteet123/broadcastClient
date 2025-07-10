@@ -111,24 +111,25 @@ class WSClient:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
+    async def update_schedules(self) -> None:
+        """Fetch schedules from the server and update the scheduler list."""
+        schedules = await scheduler.fetch_schedules(cfg)
+        self.schedules.clear()
+        self.schedules.extend(schedules)
+        if self.schedules and not self.scheduler_thread:
+            self.scheduler_thread = threading.Thread(
+                target=scheduler.run,
+                args=(self.schedules,),
+                daemon=True,
+            )
+            self.scheduler_thread.start()
+
     async def handle_ws(self, ws):
         try:
             await ws.send(json.dumps({"hello": "world", "mac": MAC_ADDRESS}))
 
             # 연결 성공 후 방송 예약 목록을 요청한다
-            async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
-                r = await cli.get("/broadcast-schedules", headers={"X-API-Key": API_KEY})
-                r.raise_for_status()
-                data = r.json()
-                print("[HTTP] /broadcast-schedules →", data)
-                self.schedules = data.get("schedules", [])
-                if self.schedules and not self.scheduler_thread:
-                    self.scheduler_thread = threading.Thread(
-                        target=scheduler.run,
-                        args=(self.schedules,),
-                        daemon=True,
-                    )
-                    self.scheduler_thread.start()
+            await self.update_schedules()
 
             while not self.stop_event.is_set():
                 msg = await ws.recv()
@@ -150,6 +151,8 @@ class WSClient:
                     sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
                     if sch:
                         asyncio.create_task(self.play_schedule(sch))
+                elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
+                    await self.update_schedules()
                 else:
                     print("[WS]", data)
         except ConnectionClosed:
