@@ -72,7 +72,7 @@ async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 0.2) -> b
     payload = {
         "text": text,
         "language": "ko",
-        "emotion": "dara",
+        "emotion": "",
         "pitch_std": None,
         "speaking_rate": None,
     }
