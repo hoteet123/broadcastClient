@@ -69,6 +69,7 @@ class WSClient:
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.scheduler_thread = None
+        self.scheduler_stop_event = None
         self.schedules = []
         self.device_id = DEVICE_ID
 
@@ -77,6 +78,8 @@ class WSClient:
 
     def stop(self):
         self.stop_event.set()
+        if self.scheduler_stop_event:
+            self.scheduler_stop_event.set()
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
 
@@ -116,10 +119,16 @@ class WSClient:
         schedules = await scheduler.fetch_schedules(cfg)
         self.schedules.clear()
         self.schedules.extend(schedules)
-        if self.schedules and not self.scheduler_thread:
+        if self.scheduler_thread and self.scheduler_thread.is_alive():
+            if self.scheduler_stop_event:
+                self.scheduler_stop_event.set()
+            self.scheduler_thread.join(timeout=1)
+            self.scheduler_thread = None
+        if self.schedules:
+            self.scheduler_stop_event = threading.Event()
             self.scheduler_thread = threading.Thread(
                 target=scheduler.run,
-                args=(self.schedules,),
+                args=(self.schedules, self.scheduler_stop_event),
                 daemon=True,
             )
             self.scheduler_thread.start()

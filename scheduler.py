@@ -118,16 +118,22 @@ async def fetch_schedules(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return data.get("schedules", [])
 
 
-async def scheduler_loop(schedules: List[Dict[str, Any]]) -> None:
+async def scheduler_loop(
+    schedules: List[Dict[str, Any]], stop_event: Optional[threading.Event] = None
+) -> None:
     """Run scheduled playback based on a list of schedule dictionaries."""
     for sch in schedules:
         sch["next_run"] = compute_next_run(sch)
     while True:
+        if stop_event and stop_event.is_set():
+            break
         now = dt.datetime.now()
         for sch in schedules:
             nr = sch.get("next_run")
             if nr and nr <= now:
-                print(f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}")
+                print(
+                    f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}"
+                )
                 audio = await tts_request(
                     sch.get("TTSContent", ""),
                     speed=sch.get("Speed", 1.0),
@@ -138,15 +144,15 @@ async def scheduler_loop(schedules: List[Dict[str, Any]]) -> None:
         await asyncio.sleep(1)
 
 
-async def run_scheduler() -> None:
+async def run_scheduler(stop_event: Optional[threading.Event] = None) -> None:
     cfg = load_config()
     schedules = await fetch_schedules(cfg)
-    await scheduler_loop(schedules)
+    await scheduler_loop(schedules, stop_event)
 
 
-def run(schedules: List[Dict[str, Any]]) -> None:
+def run(schedules: List[Dict[str, Any]], stop_event: threading.Event) -> None:
     """Blocking helper to run scheduler_loop in the current thread."""
-    asyncio.run(scheduler_loop(schedules))
+    asyncio.run(scheduler_loop(schedules, stop_event))
 
 
 if __name__ == "__main__":
