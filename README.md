@@ -23,7 +23,7 @@ systems where `h2` is missing.
 
 ## Running
 
-Edit `client.cfg` with your `HOST`, `API_KEY` and `DEVICE_ID`, then run:
+Edit `client.cfg` with your `HOST`, `API_KEY`, `DEVICE_ID` and `TTS_URL`, then run:
 
 ```bash
 python gui_client.py

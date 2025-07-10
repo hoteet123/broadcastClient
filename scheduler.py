@@ -20,12 +20,17 @@ def load_config() -> Dict[str, Any]:
             "HOST": "http://example.com:65000",
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
+            "TTS_URL": "http://example.com:8080/tts?output=mp3",
         }
         CFG_PATH.write_text(json.dumps(sample, indent=2), encoding="utf-8")
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
         sys.exit(1)
     with CFG_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+cfg = load_config()
+TTS_URL = cfg.get("TTS_URL", "http://211.170.18.15:8080/tts?output=mp3")
 
 
 def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
@@ -67,7 +72,8 @@ def play_mp3(data: bytes) -> None:
 
 
 async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 1.0) -> bytes:
-    ZONOS_URL = "http://211.170.18.15:8080/tts?output=mp3"
+    """Send a TTS request and return MP3 data."""
+    url = TTS_URL
     payload = {
         "text": text,
         "language": "ko",
@@ -76,7 +82,7 @@ async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 1.0) -> b
         "speaking_rate": speed,
     }
     async with httpx.AsyncClient(timeout=120) as cli:
-        r = await cli.post(ZONOS_URL, json=payload)
+        r = await cli.post(url, json=payload)
         r.raise_for_status()
         return r.content
 
