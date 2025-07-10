@@ -51,6 +51,11 @@ def load_config():
         return json.load(f)
 
 
+def save_config(config: dict) -> None:
+    """Write the configuration dictionary to CFG_PATH."""
+    CFG_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
 cfg = load_config()
 HOST = cfg["HOST"].rstrip("/")
 API_KEY = cfg["API_KEY"]
@@ -64,6 +69,7 @@ class WSClient:
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.scheduler_thread = None
+        self.device_id = DEVICE_ID
 
     def start(self):
         self.thread.start()
@@ -79,11 +85,11 @@ class WSClient:
         loop.run_until_complete(self.connect_loop())
 
     async def connect_loop(self):
-        ws_url = HOST.replace("http", "ws") + (
-            f"/ws?api_key={API_KEY}&device_id={DEVICE_ID}&mac={MAC_ADDRESS}"
-        )
         backoff = 1
         while not self.stop_event.is_set():
+            ws_url = HOST.replace("http", "ws") + (
+                f"/ws?api_key={API_KEY}&device_id={self.device_id}&mac={MAC_ADDRESS}"
+            )
             try:
                 self.update_status("Connecting…")
                 async with websockets.connect(ws_url, ping_interval=None, max_size=1 << 20) as ws:
@@ -115,7 +121,22 @@ class WSClient:
                     self.scheduler_thread.start()
 
             while not self.stop_event.is_set():
-                await ws.recv()
+                msg = await ws.recv()
+                try:
+                    data = json.loads(msg)
+                except Exception:
+                    print("[WS]", msg)
+                    continue
+
+                if isinstance(data, dict) and data.get("type") == "rename":
+                    new_id = data.get("device_id")
+                    if new_id:
+                        self.device_id = new_id
+                        cfg["DEVICE_ID"] = new_id
+                        save_config(cfg)
+                        self.update_status(f"Renamed to {new_id}")
+                else:
+                    print("[WS]", data)
         except ConnectionClosed:
             pass
 
