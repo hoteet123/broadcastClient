@@ -69,6 +69,7 @@ class WSClient:
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.scheduler_thread = None
+        self.schedules = []
         self.device_id = DEVICE_ID
 
     def start(self):
@@ -83,6 +84,15 @@ class WSClient:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.connect_loop())
+
+    async def play_schedule(self, sch: dict) -> None:
+        """Fetch TTS audio for a schedule and play it."""
+        audio = await scheduler.tts_request(
+            sch.get("TTSContent", ""),
+            speed=sch.get("Speed", 1.0),
+            pitch=sch.get("Pitch", 1.0),
+        )
+        scheduler.play_mp3(audio)
 
     async def connect_loop(self):
         backoff = 1
@@ -111,11 +121,11 @@ class WSClient:
                 r.raise_for_status()
                 data = r.json()
                 print("[HTTP] /broadcast-schedules →", data)
-                schedules = data.get("schedules", [])
-                if schedules and not self.scheduler_thread:
+                self.schedules = data.get("schedules", [])
+                if self.schedules and not self.scheduler_thread:
                     self.scheduler_thread = threading.Thread(
                         target=scheduler.run,
-                        args=(schedules,),
+                        args=(self.schedules,),
                         daemon=True,
                     )
                     self.scheduler_thread.start()
@@ -135,6 +145,11 @@ class WSClient:
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
+                elif isinstance(data, dict) and data.get("type") == "test-broadcast":
+                    sid = data.get("schedule_id")
+                    sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
+                    if sch:
+                        asyncio.create_task(self.play_schedule(sch))
                 else:
                     print("[WS]", data)
         except ConnectionClosed:
