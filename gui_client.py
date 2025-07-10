@@ -43,6 +43,7 @@ def load_config():
             "HOST": "http://example.com:65000",
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
+            "TTS_URL": "http://example.com:8080/tts?output=mp3",
         }
         CFG_PATH.write_text(json.dumps(sample, indent=2), encoding="utf-8")
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
