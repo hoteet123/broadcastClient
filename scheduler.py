@@ -66,14 +66,15 @@ def play_mp3(data: bytes) -> None:
         threading.Thread(target=_cleanup_process, args=(proc, tmp.name), daemon=True).start()
 
 
-async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 1.0) -> bytes:
+async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 0.2) -> bytes:
     ZONOS_URL = "http://211.170.18.15:8080/tts?output=mp3"
+
     payload = {
         "text": text,
         "language": "ko",
-        "emotion": None,
-        "pitch_std": pitch,
-        "speaking_rate": speed,
+        "emotion": "dara",
+        "pitch_std": None,
+        "speaking_rate": None,
     }
     async with httpx.AsyncClient(timeout=120) as cli:
         r = await cli.post(ZONOS_URL, json=payload)
