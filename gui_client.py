@@ -157,9 +157,9 @@ class WSClient:
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
-                elif isinstance(data, dict) and data.get("type") == "play_schedule":
+                elif isinstance(data, dict) and data.get("type") in {"play_schedule", "test-broadcast"}:
                     schedule_id = data.get("schedule_id")
-                    test = bool(data.get("test"))
+                    test = bool(data.get("test")) or data.get("type") == "test-broadcast"
                     if schedule_id is not None:
                         await self.play_schedule_once(schedule_id, test=test)
                 else:
