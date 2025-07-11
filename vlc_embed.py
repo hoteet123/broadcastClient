@@ -1,7 +1,12 @@
+"""Launch a fullscreen VLC window embedded in Tkinter."""
+
 import sys
 import ctypes
 import tkinter as tk
 import vlc
+
+
+DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
 
 def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
@@ -38,7 +43,7 @@ def play_media(url: str) -> None:
 
 
 if __name__ == '__main__':
+    url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
     if len(sys.argv) < 2:
-        print('Usage: python vlc_embed.py <media_url>')
-        sys.exit(1)
-    play_media(sys.argv[1])
+        print(f'No URL provided. Using default: {DEFAULT_URL}')
+    play_media(url)

@@ -7,6 +7,8 @@ import uuid
 import ast
 import pathlib
 
+DEFAULT_URL = "http://nas.3no.kr/test.mp4"
+
 import scheduler
 import tempfile
 from typing import Optional
@@ -92,11 +94,13 @@ class WSClient:
             self.vlc_process.terminate()
             self.vlc_process = None
 
-    def start_vlc(self, url: str) -> None:
+    def start_vlc(self, url: Optional[str] = None) -> None:
+        """Launch VLC to play ``url`` in fullscreen."""
         if self.vlc_process and self.vlc_process.poll() is None:
             return
         script = pathlib.Path(__file__).with_name("vlc_embed.py")
-        self.vlc_process = subprocess.Popen([sys.executable, str(script), url])
+        target_url = url or DEFAULT_URL
+        self.vlc_process = subprocess.Popen([sys.executable, str(script), target_url])
 
     def stop_vlc(self) -> None:
         if self.vlc_process and self.vlc_process.poll() is None:
@@ -220,9 +224,8 @@ class WSClient:
                         self.update_status("사용함")
                         await self.update_schedules()
                         if playmode == 1:
-                            url = data.get("StreamURL") or data.get("url") or ""
-                            if url:
-                                self.start_vlc(url)
+                            url = data.get("StreamURL") or data.get("url")
+                            self.start_vlc(url)
                         else:
                             self.stop_vlc()
                 elif isinstance(data, dict) and data.get("type") == "test-broadcast":

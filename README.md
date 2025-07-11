@@ -44,3 +44,4 @@ When the server sends a config message with `Playmode` set to `1`,
 in a fullscreen embedded VLC window. The helper script attaches VLC to a
 Tkinter window using the correct API for Windows, macOS, or X11-based
 Linux/Raspbian environments.
+If no stream URL is supplied, it defaults to `http://nas.3no.kr/test.mp4`.
