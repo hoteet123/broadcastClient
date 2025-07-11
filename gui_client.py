@@ -74,6 +74,7 @@ class WSClient:
         self.scheduler_stop_event = None
         self.schedules = []
         self.device_id = DEVICE_ID
+        self.device_enabled = True
 
     def start(self):
         self.thread.start()
@@ -146,7 +147,7 @@ class WSClient:
 
         self.schedules = list(schedules)
 
-        if self.schedules:
+        if self.schedules and self.device_enabled:
             self.scheduler_stop_event = threading.Event()
             self.scheduler_thread = threading.Thread(
                 target=scheduler.run,
@@ -159,8 +160,7 @@ class WSClient:
         try:
             await ws.send(json.dumps({"hello": "world", "mac": MAC_ADDRESS}))
 
-            # 연결 성공 후 방송 예약 목록을 요청한다
-            await self.update_schedules()
+            # 서버 설정을 받은 뒤 스케줄을 불러온다
 
             while not self.stop_event.is_set():
                 msg = await ws.recv()
@@ -177,6 +177,19 @@ class WSClient:
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
+                elif isinstance(data, dict) and data.get("type") == "config":
+                    enabled = data.get("IsEnabled", 1)
+                    self.device_enabled = bool(enabled)
+                    if not self.device_enabled:
+                        self.update_status("장치가 사용 안함으로 되어있습니다")
+                        if self.scheduler_stop_event:
+                            self.scheduler_stop_event.set()
+                        if self.scheduler_thread and self.scheduler_thread.is_alive():
+                            self.scheduler_thread.join(timeout=1)
+                            self.scheduler_thread = None
+                    else:
+                        self.update_status("Connected")
+                        await self.update_schedules()
                 elif isinstance(data, dict) and data.get("type") == "test-broadcast":
                     sid = data.get("schedule_id")
                     sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
