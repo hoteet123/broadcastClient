@@ -185,17 +185,21 @@ class WSClient:
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
                 elif isinstance(data, dict) and data.get("type") == "config":
-                    enabled = data.get("IsEnabled", 1)
-                    self.device_enabled = bool(enabled)
+                    enabled = data.get("IsEnabled", True)
+                    if isinstance(enabled, str):
+                        enabled = enabled.lower() in {"1", "true", "yes"}
+                    else:
+                        enabled = bool(enabled)
+                    self.device_enabled = enabled
                     if not self.device_enabled:
-                        self.update_status("장치가 사용 안함으로 되어있습니다")
+                        self.update_status("사용안함")
                         if self.scheduler_stop_event:
                             self.scheduler_stop_event.set()
                         if self.scheduler_thread and self.scheduler_thread.is_alive():
                             self.scheduler_thread.join(timeout=1)
                             self.scheduler_thread = None
                     else:
-                        self.update_status("Connected")
+                        self.update_status("사용함")
                         await self.update_schedules()
                 elif isinstance(data, dict) and data.get("type") == "test-broadcast":
                     sid = data.get("schedule_id")
