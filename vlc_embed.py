@@ -1,13 +1,26 @@
 import sys
+import ctypes
 import tkinter as tk
 import vlc
 
 
+def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
+    """Attach VLC player to a window handle on the current platform."""
+    if sys.platform.startswith("win"):
+        player.set_hwnd(handle)
+    elif sys.platform == "darwin":
+        # On macOS the handle needs to be passed as a void pointer
+        player.set_nsobject(ctypes.c_void_p(handle))
+    else:
+        # X11 (Linux, Raspbian, etc.)
+        player.set_xwindow(handle)
+
+
 def play_media(url: str) -> None:
     root = tk.Tk()
-    root.attributes('-fullscreen', True)
-    root.configure(background='black')
-    frame = tk.Frame(root, background='black')
+    root.attributes("-fullscreen", True)
+    root.configure(background="black")
+    frame = tk.Frame(root, background="black")
     frame.pack(fill=tk.BOTH, expand=True)
 
     instance = vlc.Instance()
@@ -15,13 +28,12 @@ def play_media(url: str) -> None:
     media = instance.media_new(url)
     player.set_media(media)
 
+    root.update_idletasks()
     handle = frame.winfo_id()
-    if sys.platform.startswith('win'):
-        player.set_hwnd(handle)
-    else:
-        player.set_xwindow(handle)
+    _attach_handle(player, handle)
 
     player.play()
+    root.protocol("WM_DELETE_WINDOW", lambda: (player.stop(), root.destroy()))
     root.mainloop()
 
 

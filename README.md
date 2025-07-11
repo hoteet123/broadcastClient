@@ -41,4 +41,6 @@ python scheduler.py
 
 When the server sends a config message with `Playmode` set to `1`,
 `gui_client.py` will launch `vlc_embed.py` to play a provided `StreamURL`
-in a fullscreen embedded VLC window.
+in a fullscreen embedded VLC window. The helper script attaches VLC to a
+Tkinter window using the correct API for Windows, macOS, or X11-based
+Linux/Raspbian environments.
