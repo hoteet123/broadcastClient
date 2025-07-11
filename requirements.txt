@@ -2,3 +2,4 @@ websockets
 httpx[http2]
 pystray
 pillow
+python-vlc

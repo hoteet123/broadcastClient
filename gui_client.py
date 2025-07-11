@@ -1,15 +1,16 @@
 import asyncio
 import json
-import pathlib
 import threading
 import sys
 import tkinter as tk
 import uuid
 import ast
+import pathlib
 
 import scheduler
 import tempfile
 from typing import Optional
+import subprocess
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -76,6 +77,7 @@ class WSClient:
         self.schedules = []
         self.device_id = DEVICE_ID
         self.device_enabled = True
+        self.vlc_process = None
 
     def start(self):
         self.thread.start()
@@ -86,6 +88,20 @@ class WSClient:
             self.scheduler_stop_event.set()
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
+        if self.vlc_process and self.vlc_process.poll() is None:
+            self.vlc_process.terminate()
+            self.vlc_process = None
+
+    def start_vlc(self, url: str) -> None:
+        if self.vlc_process and self.vlc_process.poll() is None:
+            return
+        script = pathlib.Path(__file__).with_name("vlc_embed.py")
+        self.vlc_process = subprocess.Popen([sys.executable, str(script), url])
+
+    def stop_vlc(self) -> None:
+        if self.vlc_process and self.vlc_process.poll() is None:
+            self.vlc_process.terminate()
+            self.vlc_process = None
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -190,6 +206,7 @@ class WSClient:
                         enabled = enabled.lower() in {"1", "true", "yes"}
                     else:
                         enabled = bool(enabled)
+                    playmode = int(data.get("Playmode", 0))
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")
@@ -198,9 +215,16 @@ class WSClient:
                         if self.scheduler_thread and self.scheduler_thread.is_alive():
                             self.scheduler_thread.join(timeout=1)
                             self.scheduler_thread = None
+                        self.stop_vlc()
                     else:
                         self.update_status("사용함")
                         await self.update_schedules()
+                        if playmode == 1:
+                            url = data.get("StreamURL") or data.get("url") or ""
+                            if url:
+                                self.start_vlc(url)
+                        else:
+                            self.stop_vlc()
                 elif isinstance(data, dict) and data.get("type") == "test-broadcast":
                     sid = data.get("schedule_id")
                     sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
