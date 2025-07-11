@@ -37,6 +37,52 @@ def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
         pass
 
 
+def _play_mp3_path(path: str) -> None:
+    """Play an MP3 file located at ``path`` and remove it afterwards."""
+    if sys.platform.startswith("win"):
+        def play_and_cleanup(p: str) -> None:
+            try:
+                import ctypes
+                alias = f"mp3_{os.getpid()}_{threading.get_ident()}"
+                mci = ctypes.windll.winmm.mciSendStringW
+                mci(f'open "{p}" type mpegvideo alias {alias}', None, 0, None)
+                mci(f'play {alias} wait', None, 0, None)
+                mci(f'close {alias}', None, 0, None)
+            finally:
+                try:
+                    os.unlink(p)
+                except FileNotFoundError:
+                    pass
+
+        threading.Thread(target=play_and_cleanup, args=(path,), daemon=True).start()
+    else:
+        command = ["mpg123", "-q", path]
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        threading.Thread(target=_cleanup_process, args=(proc, path), daemon=True).start()
+
+
+def play_mp3_file(path: str) -> None:
+    """Play an MP3 file and delete it after playback completes."""
+    _play_mp3_path(path)
+
+
+def set_volume(level: int) -> None:
+    """Attempt to set system output volume (0-100)."""
+    try:
+        level = max(0, min(100, int(level)))
+        if sys.platform.startswith("win"):
+            import ctypes
+            vol = int(level * 0xFFFF / 100)
+            ctypes.windll.winmm.waveOutSetVolume(0xFFFFFFFF, vol | (vol << 16))
+        elif sys.platform == "darwin":
+            vol = level * 10 / 100
+            subprocess.call(["osascript", "-e", f"set volume output volume {vol}"])
+        else:
+            subprocess.call(["amixer", "sset", "Master", f"{level}%"])
+    except Exception as e:  # noqa: BLE001
+        print(f"Failed to set volume: {e}")
+
+
 def play_mp3(data: bytes) -> None:
     """Play MP3 data using an available backend without blocking."""
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
@@ -44,26 +90,7 @@ def play_mp3(data: bytes) -> None:
     tmp.flush()
     tmp.close()
 
-    if sys.platform.startswith("win"):
-        def play_and_cleanup(path: str) -> None:
-            try:
-                import ctypes
-                alias = f"mp3_{os.getpid()}_{threading.get_ident()}"
-                mci = ctypes.windll.winmm.mciSendStringW
-                mci(f'open "{path}" type mpegvideo alias {alias}', None, 0, None)
-                mci(f'play {alias} wait', None, 0, None)
-                mci(f'close {alias}', None, 0, None)
-            finally:
-                try:
-                    os.unlink(path)
-                except FileNotFoundError:
-                    pass
-
-        threading.Thread(target=play_and_cleanup, args=(tmp.name,), daemon=True).start()
-    else:
-        command = ["mpg123", "-q", tmp.name]
-        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        threading.Thread(target=_cleanup_process, args=(proc, tmp.name), daemon=True).start()
+    _play_mp3_path(tmp.name)
 
 
 async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 0.2) -> bytes:

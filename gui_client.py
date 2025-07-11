@@ -7,6 +7,8 @@ import tkinter as tk
 import uuid
 
 import scheduler
+import tempfile
+from typing import Optional
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -97,6 +99,25 @@ class WSClient:
         )
         scheduler.play_mp3(audio)
 
+    async def play_audio_url(self, url: str, volume: Optional[int] = None) -> None:
+        """Download an MP3 from ``url`` and play it."""
+        try:
+            async with httpx.AsyncClient(timeout=120) as cli:
+                r = await cli.get(url)
+                r.raise_for_status()
+
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            tmp.write(r.content)
+            tmp.flush()
+            tmp.close()
+
+            if volume is not None:
+                scheduler.set_volume(volume)
+
+            scheduler.play_mp3_file(tmp.name)
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to play audio from {url}: {e}")
+
     async def connect_loop(self):
         backoff = 1
         while not self.stop_event.is_set():
@@ -161,6 +182,11 @@ class WSClient:
                     sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
                     if sch:
                         asyncio.create_task(self.play_schedule(sch))
+                elif isinstance(data, dict) and data.get("type") == "custom-broadcast":
+                    url = data.get("audio_url")
+                    volume = data.get("volume")
+                    if url:
+                        asyncio.create_task(self.play_audio_url(url, volume))
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
                     await self.update_schedules()
                 else:
