@@ -117,13 +117,14 @@ class WSClient:
     async def update_schedules(self) -> None:
         """Fetch schedules from the server and update the scheduler list."""
         schedules = await scheduler.fetch_schedules(cfg)
-        self.schedules.clear()
-        self.schedules.extend(schedules)
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             if self.scheduler_stop_event:
                 self.scheduler_stop_event.set()
             self.scheduler_thread.join(timeout=1)
             self.scheduler_thread = None
+
+        self.schedules = list(schedules)
+
         if self.schedules:
             self.scheduler_stop_event = threading.Event()
             self.scheduler_thread = threading.Thread(
