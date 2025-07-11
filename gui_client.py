@@ -5,6 +5,7 @@ import threading
 import sys
 import tkinter as tk
 import uuid
+import ast
 
 import scheduler
 import tempfile
@@ -166,6 +167,12 @@ class WSClient:
                 msg = await ws.recv()
                 try:
                     data = json.loads(msg)
+                except json.JSONDecodeError:
+                    try:
+                        data = ast.literal_eval(msg)
+                    except Exception:
+                        print("[WS]", msg)
+                        continue
                 except Exception:
                     print("[WS]", msg)
                     continue
