@@ -58,12 +58,15 @@ def play_playlist(items: list) -> None:
             continue
         opts = []
         if is_image(item):
-            dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
+            # DurationSeconds is specified in seconds
+            dur = float(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
             opts.append(f":image-duration={dur}")
         media = instance.media_new(url, *opts)
         mlist.add_media(media)
 
     mlplayer.set_media_list(mlist)
+    # Loop playback so the playlist repeats indefinitely
+    mlplayer.set_playback_mode(vlc.PlaybackMode.loop)
 
     def on_finished(event):
         root.after(0, root.destroy)
