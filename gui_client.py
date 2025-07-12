@@ -275,7 +275,41 @@ class WSClient:
                 elif isinstance(data, dict) and data.get("type") == "playlist":
                     items = data.get("items")
                     if isinstance(items, list):
-                        self.playlist_items = list(items)
+                        new_items = list(items)
+
+                        def item_id(it: dict) -> str:
+                            return str(
+                                it.get("MediaID")
+                                or it.get("media_id")
+                                or it.get("id")
+                                or it.get("MediaUrl")
+                                or it.get("url")
+                            )
+
+                        def item_vol(it: dict) -> str:
+                            if "Volume" in it:
+                                return str(it.get("Volume"))
+                            if "volume" in it:
+                                return str(it.get("volume"))
+                            return ""
+
+                        old = self.playlist_items
+
+                        same_order = (
+                            len(old) == len(new_items)
+                            and all(item_id(o) == item_id(n) for o, n in zip(old, new_items))
+                        )
+                        same_volume = (
+                            same_order
+                            and all(item_vol(o) == item_vol(n) for o, n in zip(old, new_items))
+                        )
+
+                        if same_order and same_volume:
+                            # No changes
+                            continue
+
+                        # Update playlist and restart VLC
+                        self.playlist_items = new_items
                         self.start_vlc_playlist(self.playlist_items)
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
                     await self.update_schedules()
