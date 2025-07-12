@@ -50,11 +50,14 @@ def play_playlist(items: list) -> None:
 
     idx = 0
 
+    if not items:
+        root.destroy()
+        return
+
     def play_next() -> None:
         nonlocal idx
         if idx >= len(items):
-            root.destroy()
-            return
+            idx = 0
         item = items[idx]
         idx += 1
 
