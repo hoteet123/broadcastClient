@@ -37,6 +37,8 @@ def fix_media_url(url: str) -> str:
 
 
 def play_playlist(items: list) -> None:
+    """Play media items in a loop, honoring image durations."""
+
     root = tk.Tk()
     root.attributes("-fullscreen", True)
     root.configure(background="black")
@@ -44,41 +46,61 @@ def play_playlist(items: list) -> None:
     frame.pack(fill=tk.BOTH, expand=True)
 
     instance = vlc.Instance()
-    mlplayer = instance.media_list_player_new()
-    mplayer = mlplayer.get_media_player()
+    player = instance.media_player_new()
     root.update_idletasks()
-    _attach_handle(mplayer, frame.winfo_id())
+    _attach_handle(player, frame.winfo_id())
 
-    mlist = instance.media_list_new()
+    playlist = []
     for item in items:
         url = item.get("MediaUrl") or item.get("url")
         if url:
             url = fix_media_url(url)
         if not url:
             continue
+        duration = None
         opts = []
         if is_image(item):
             # DurationSeconds is specified in seconds
-            dur = float(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
-            opts.append(f":image-duration={dur}")
+            duration = float(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
+            opts.append(f":image-duration={duration}")
         media = instance.media_new(url, *opts)
-        mlist.add_media(media)
+        playlist.append({"media": media, "duration": duration})
 
-    mlplayer.set_media_list(mlist)
-    # Loop playback so the playlist repeats indefinitely
-    mlplayer.set_playback_mode(vlc.PlaybackMode.loop)
+    if not playlist:
+        return
 
-    def on_finished(event):
-        root.after(0, root.destroy)
+    index = 0
+    timer_id = None
 
-    em = mlplayer.event_manager()
-    em.event_attach(vlc.EventType.MediaListPlayerStopped, on_finished)
-    # MediaListPlayerFinished does not exist; MediaListEndReached signals the
-    # end of the list
-    em.event_attach(vlc.EventType.MediaListEndReached, on_finished)
+    def play_current() -> None:
+        nonlocal timer_id
+        entry = playlist[index]
+        player.set_media(entry["media"])
+        player.play()
+        if timer_id is not None:
+            root.after_cancel(timer_id)
+            timer_id = None
+        dur = entry["duration"]
+        if dur is not None:
+            # Schedule next item after ``dur`` seconds for images
+            timer_id = root.after(int(dur * 1000), next_item)
 
-    mlplayer.play()
-    root.protocol("WM_DELETE_WINDOW", lambda: (mlplayer.stop(), root.destroy()))
+    def next_item() -> None:
+        nonlocal index
+        index = (index + 1) % len(playlist)
+        play_current()
+
+    def on_end(event) -> None:
+        # Video finished; advance to next item
+        root.after(0, next_item)
+
+    player.event_manager().event_attach(
+        vlc.EventType.MediaPlayerEndReached, on_end
+    )
+
+    play_current()
+
+    root.protocol("WM_DELETE_WINDOW", lambda: (player.stop(), root.destroy()))
     root.mainloop()
 
 
