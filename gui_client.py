@@ -215,8 +215,12 @@ class WSClient:
                         print("[WS]", msg)
                         continue
                 except Exception:
-                    print("[WS]", msg)
-                    continue
+                    try:
+                        import ast
+                        data = ast.literal_eval(msg)
+                    except Exception:
+                        print("[WS]", msg)
+                        continue
 
                 if isinstance(data, dict) and data.get("type") == "rename":
                     new_id = data.get("device_id")
