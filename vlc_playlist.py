@@ -44,38 +44,46 @@ def play_playlist(items: list) -> None:
     frame.pack(fill=tk.BOTH, expand=True)
 
     instance = vlc.Instance()
-    mlplayer = instance.media_list_player_new()
-    mplayer = mlplayer.get_media_player()
+    player = instance.media_player_new()
     root.update_idletasks()
-    _attach_handle(mplayer, frame.winfo_id())
+    _attach_handle(player, frame.winfo_id())
 
-    mlist = instance.media_list_new()
-    for item in items:
+    idx = 0
+
+    def play_next() -> None:
+        nonlocal idx
+        if idx >= len(items):
+            root.destroy()
+            return
+        item = items[idx]
+        idx += 1
+
         url = item.get("MediaUrl") or item.get("url")
         if url:
             url = fix_media_url(url)
         if not url:
-            continue
-        opts = []
+            root.after(0, play_next)
+            return
+
+        media = instance.media_new(url)
+        player.set_media(media)
+        player.play()
+
         if is_image(item):
             dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
-            opts.append(f":image-duration={dur}")
-        media = instance.media_new(url, *opts)
-        mlist.add_media(media)
+            root.after(dur * 1000, play_next)
+        else:
+            def on_end(event):
+                player.event_manager().event_detach(vlc.EventType.MediaPlayerEndReached)
+                root.after(0, play_next)
 
-    mlplayer.set_media_list(mlist)
+            player.event_manager().event_attach(
+                vlc.EventType.MediaPlayerEndReached, on_end
+            )
 
-    def on_finished(event):
-        root.after(0, root.destroy)
+    play_next()
 
-    em = mlplayer.event_manager()
-    em.event_attach(vlc.EventType.MediaListPlayerStopped, on_finished)
-    # MediaListPlayerFinished does not exist; MediaListEndReached signals the
-    # end of the list
-    em.event_attach(vlc.EventType.MediaListEndReached, on_finished)
-
-    mlplayer.play()
-    root.protocol("WM_DELETE_WINDOW", lambda: (mlplayer.stop(), root.destroy()))
+    root.protocol("WM_DELETE_WINDOW", lambda: (player.stop(), root.destroy()))
     root.mainloop()
 
 
