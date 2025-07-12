@@ -66,7 +66,7 @@ def fix_media_url(url: str) -> str:
     return url
 
 
-def play_playlist(items: list) -> None:
+def play_playlist(items: list, *, start_index: int = 0) -> None:
     root = tk.Tk()
     root.attributes("-fullscreen", True)
     root.configure(background="black")
@@ -78,7 +78,7 @@ def play_playlist(items: list) -> None:
     root.update_idletasks()
     _attach_handle(player, frame.winfo_id())
 
-    idx = 0
+    idx = max(0, int(start_index))
 
     if not items:
         root.destroy()
@@ -144,8 +144,14 @@ if __name__ == "__main__":
         print("Usage: vlc_playlist.py playlist.json")
         sys.exit(1)
     with open(sys.argv[1], "r", encoding="utf-8") as f:
-        items = json.load(f)
+        data = json.load(f)
+    if isinstance(data, dict):
+        items = data.get("items", [])
+        start_index = int(data.get("start_index", 0))
+    else:
+        items = data
+        start_index = 0
     if not isinstance(items, list):
         print("Invalid playlist format")
         sys.exit(1)
-    play_playlist(items)
+    play_playlist(items, start_index=start_index)

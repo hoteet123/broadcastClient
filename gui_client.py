@@ -78,6 +78,7 @@ class WSClient:
         self.scheduler_thread = None
         self.scheduler_stop_event = None
         self.schedules = []
+        self.playlist_items = []
         self.device_id = DEVICE_ID
         self.device_enabled = True
         self.vlc_process = None
@@ -103,13 +104,13 @@ class WSClient:
         target_url = url or DEFAULT_URL
         self.vlc_process = subprocess.Popen([sys.executable, str(script), target_url])
 
-    def start_vlc_playlist(self, items: list) -> None:
+    def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
         """Launch VLC to play a playlist of media items."""
         if self.vlc_process and self.vlc_process.poll() is None:
             self.vlc_process.terminate()
         script = pathlib.Path(__file__).with_name("vlc_playlist.py")
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
-        json.dump(items, tmp)
+        json.dump({"items": items, "start_index": int(start_index)}, tmp)
         tmp.flush()
         tmp.close()
         self.vlc_process = subprocess.Popen([sys.executable, str(script), tmp.name])
@@ -259,10 +260,23 @@ class WSClient:
                     volume = data.get("volume")
                     if url:
                         asyncio.create_task(self.play_audio_url(url, volume))
+                elif isinstance(data, dict) and data.get("type") == "play-media":
+                    mid = data.get("media_id")
+                    if mid is not None and self.playlist_items:
+                        try:
+                            mid_str = str(mid)
+                            idx = next(
+                                i for i, it in enumerate(self.playlist_items)
+                                if str(it.get("MediaID") or it.get("media_id") or it.get("id")) == mid_str
+                            )
+                            self.start_vlc_playlist(self.playlist_items, start_index=idx)
+                        except StopIteration:
+                            pass
                 elif isinstance(data, dict) and data.get("type") == "playlist":
                     items = data.get("items")
                     if isinstance(items, list):
-                        self.start_vlc_playlist(items)
+                        self.playlist_items = list(items)
+                        self.start_vlc_playlist(self.playlist_items)
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
                     await self.update_schedules()
                 else:
