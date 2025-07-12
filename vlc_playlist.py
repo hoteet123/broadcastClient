@@ -4,6 +4,7 @@ import json
 import ctypes
 import tkinter as tk
 import vlc
+from urllib.parse import urlparse, urlunparse
 
 DEFAULT_IMAGE_DURATION = 5
 
@@ -25,6 +26,16 @@ def is_image(item: dict) -> bool:
     return url.endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp"))
 
 
+def fix_media_url(url: str) -> str:
+    """Convert old NAS URLs to the new format."""
+    parsed = urlparse(url)
+    if parsed.netloc == "nas.3no.kr:9006" and parsed.path.startswith("/web/"):
+        new_path = parsed.path[len("/web") :]
+        parsed = parsed._replace(netloc="nas.3no.kr", path=new_path)
+        return urlunparse(parsed)
+    return url
+
+
 def play_playlist(items: list) -> None:
     root = tk.Tk()
     root.attributes("-fullscreen", True)
@@ -41,6 +52,8 @@ def play_playlist(items: list) -> None:
     mlist = instance.media_list_new()
     for item in items:
         url = item.get("MediaUrl") or item.get("url")
+        if url:
+            url = fix_media_url(url)
         if not url:
             continue
         opts = []
