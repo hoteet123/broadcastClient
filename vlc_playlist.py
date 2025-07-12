@@ -57,7 +57,9 @@ def play_playlist(items: list) -> None:
 
     em = mlplayer.event_manager()
     em.event_attach(vlc.EventType.MediaListPlayerStopped, on_finished)
-    em.event_attach(vlc.EventType.MediaListPlayerFinished, on_finished)
+    # MediaListPlayerFinished does not exist; MediaListEndReached signals the
+    # end of the list
+    em.event_attach(vlc.EventType.MediaListEndReached, on_finished)
 
     mlplayer.play()
     root.protocol("WM_DELETE_WINDOW", lambda: (mlplayer.stop(), root.destroy()))
