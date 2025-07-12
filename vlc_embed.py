@@ -4,9 +4,40 @@ import sys
 import ctypes
 import tkinter as tk
 import vlc
+import pathlib
+import hashlib
+from urllib.parse import urlparse
+import httpx
 
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
+
+# Directory to store cached media files
+CACHE_DIR = pathlib.Path(__file__).with_name("cache")
+
+
+def cache_media(url: str) -> str:
+    """Return a local path to the media, downloading it if necessary."""
+    parsed = urlparse(url)
+    if parsed.scheme in {"file", ""}:
+        return url
+
+    CACHE_DIR.mkdir(exist_ok=True)
+    ext = pathlib.Path(parsed.path).suffix or ".bin"
+    name = hashlib.sha1(url.encode()).hexdigest() + ext
+    path = CACHE_DIR / name
+    if path.exists():
+        return str(path)
+
+    try:
+        with httpx.Client(timeout=60.0) as cli:
+            r = cli.get(url)
+            r.raise_for_status()
+            path.write_bytes(r.content)
+        return str(path)
+    except Exception as e:  # noqa: BLE001
+        print(f"Failed to cache {url}: {e}")
+        return url
 
 
 def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
@@ -30,7 +61,8 @@ def play_media(url: str) -> None:
 
     instance = vlc.Instance()
     player = instance.media_player_new()
-    media = instance.media_new(url)
+    media_url = cache_media(url)
+    media = instance.media_new(media_url)
     player.set_media(media)
 
     root.update_idletasks()
