@@ -101,7 +101,6 @@ def play_playlist(items: list) -> None:
         media_url = cache_media(url)
         media = instance.media_new(media_url)
         player.set_media(media)
-        player.play()
 
         volume = item.get("Volume") if item.get("Volume") is not None else item.get("volume")
         if volume is not None:
@@ -111,6 +110,8 @@ def play_playlist(items: list) -> None:
                 player.audio_set_volume(vol)
             except Exception:
                 pass
+
+        player.play()
 
         if is_image(item):
             dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
