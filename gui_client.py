@@ -82,6 +82,7 @@ class WSClient:
         self.device_id = DEVICE_ID
         self.device_enabled = True
         self.vlc_process = None
+        self.playlist_path = None
 
     def start(self):
         self.thread.start()
@@ -92,9 +93,7 @@ class WSClient:
             self.scheduler_stop_event.set()
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
-        if self.vlc_process and self.vlc_process.poll() is None:
-            self.vlc_process.terminate()
-            self.vlc_process = None
+        self.stop_vlc()
 
     def start_vlc(self, url: Optional[str] = None) -> None:
         """Launch VLC to play ``url`` in fullscreen."""
@@ -105,29 +104,41 @@ class WSClient:
         self.vlc_process = subprocess.Popen([sys.executable, str(script), target_url])
 
     def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
-        """Launch VLC to play a playlist of media items."""
+        """Launch or update VLC playlist without closing the window."""
+
+        data = {"items": items, "start_index": int(start_index)}
+        script = pathlib.Path(__file__).with_name("vlc_playlist.py")
+
+        if self.vlc_process and self.vlc_process.poll() is None and self.playlist_path:
+            try:
+                with open(self.playlist_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+                return
+            except Exception:
+                pass
+
+        # Either VLC not running or playlist file missing -> start new process
         if self.vlc_process and self.vlc_process.poll() is None:
             self.vlc_process.terminate()
-        script = pathlib.Path(__file__).with_name("vlc_playlist.py")
+
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
-        json.dump({"items": items, "start_index": int(start_index)}, tmp)
+        json.dump(data, tmp)
         tmp.flush()
         tmp.close()
+        self.playlist_path = tmp.name
         self.vlc_process = subprocess.Popen([sys.executable, str(script), tmp.name])
-        threading.Thread(target=self._cleanup_temp, args=(self.vlc_process, tmp.name), daemon=True).start()
 
-    @staticmethod
-    def _cleanup_temp(proc: subprocess.Popen, path: str) -> None:
-        proc.wait()
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
 
     def stop_vlc(self) -> None:
         if self.vlc_process and self.vlc_process.poll() is None:
             self.vlc_process.terminate()
             self.vlc_process = None
+        if self.playlist_path:
+            try:
+                os.unlink(self.playlist_path)
+            except FileNotFoundError:
+                pass
+            self.playlist_path = None
 
     def run(self):
         loop = asyncio.new_event_loop()
