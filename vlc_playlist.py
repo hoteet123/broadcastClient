@@ -103,6 +103,15 @@ def play_playlist(items: list) -> None:
         player.set_media(media)
         player.play()
 
+        volume = item.get("Volume") if item.get("Volume") is not None else item.get("volume")
+        if volume is not None:
+            try:
+                vol = int(volume)
+                vol = max(0, min(100, vol))
+                player.audio_set_volume(vol)
+            except Exception:
+                pass
+
         if is_image(item):
             dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
             root.after(dur * 1000, play_next)
