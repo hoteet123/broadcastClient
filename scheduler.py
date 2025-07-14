@@ -11,7 +11,13 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-CFG_PATH = pathlib.Path(__file__).with_name("client.cfg")
+# When packaged as a single executable on Windows, ``__file__`` points to a
+# temporary extraction directory. Use ``sys.argv[0]`` so ``client.cfg`` is
+# loaded from the executable's directory.
+if getattr(sys, "frozen", False) and sys.platform == "win32":
+    CFG_PATH = pathlib.Path(sys.argv[0]).with_name("client.cfg")
+else:
+    CFG_PATH = pathlib.Path(__file__).with_name("client.cfg")
 
 
 def load_config() -> Dict[str, Any]:
