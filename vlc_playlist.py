@@ -1,9 +1,10 @@
 """Play a playlist of media items in fullscreen using VLC.
 
-This script keeps the playback window alive even when the playlist file is
-updated.  When the JSON playlist file given on the command line changes, the
-file is reloaded and playback continues without closing the window.  The file
-format is the same as previously used by ``WSClient.start_vlc_playlist``:
+The functions here mirror the previous standalone script behaviour but allow
+embedding the player in the current process.  ``run()`` starts playback of a
+playlist JSON file and automatically reloads the file when it changes.
+``stop()`` closes the window and stops playback.  The JSON format is the same
+as previously used by ``WSClient.start_vlc_playlist``:
 
 ``{"items": [...], "start_index": 0}``
 """
@@ -23,6 +24,16 @@ DEFAULT_IMAGE_DURATION = 5
 
 # Directory used to store cached media files
 CACHE_DIR = pathlib.Path(__file__).with_name("cache")
+
+
+_root: tk.Tk | None = None
+_player: vlc.MediaPlayer | None = None
+_after_id: str | None = None
+_check_id: str | None = None
+_playlist_path: str | None = None
+_items: list | None = None
+_idx: int = 0
+_last_mtime: float = 0.0
 
 
 def cache_media(url: str) -> str:
@@ -76,7 +87,7 @@ def fix_media_url(url: str) -> str:
     return url
 
 
-def play_playlist(path: str) -> None:
+def run(path: str) -> None:
     """Play playlist defined in ``path`` and reload when it changes."""
 
     def load() -> tuple[list, int]:
@@ -96,7 +107,12 @@ def play_playlist(path: str) -> None:
             print(f"Failed to load playlist: {e}")
             return [], 0
 
+    global _root, _player, _after_id, _check_id, _playlist_path, _items, _idx, _last_mtime
+
+    _playlist_path = path
+
     root = tk.Tk()
+    _root = root
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
@@ -104,12 +120,16 @@ def play_playlist(path: str) -> None:
 
     instance = vlc.Instance()
     player = instance.media_player_new()
+    _player = player
     root.update_idletasks()
     _attach_handle(player, frame.winfo_id())
 
     items, idx = load()
+    _items = items
     idx = max(0, int(idx))
+    _idx = idx
     last_mtime = os.path.getmtime(path) if os.path.exists(path) else 0.0
+    _last_mtime = last_mtime
     after_id = None
 
     def play_next() -> None:
@@ -123,6 +143,7 @@ def play_playlist(path: str) -> None:
             idx = 0
         item = items[idx]
         idx += 1
+        _idx = idx
 
         url = item.get("MediaUrl") or item.get("url")
         if url:
@@ -157,6 +178,7 @@ def play_playlist(path: str) -> None:
         if is_image(item):
             dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
             after_id = root.after(dur * 1000, play_next)
+            _after_id = after_id
         else:
             def on_end(event):
                 player.event_manager().event_detach(vlc.EventType.MediaPlayerEndReached)
@@ -171,23 +193,60 @@ def play_playlist(path: str) -> None:
         try:
             mtime = os.path.getmtime(path)
         except FileNotFoundError:
-            root.after(1000, check_update)
+            _check_id = root.after(1000, check_update)
             return
         if mtime != last_mtime:
             last_mtime = mtime
             new_items, new_idx = load()
             if new_items:
                 items = new_items
+                _items = items
                 idx = max(0, int(new_idx))
+                _idx = idx
                 player.stop()
                 play_next()
-        root.after(1000, check_update)
+        _check_id = root.after(1000, check_update)
 
     play_next()
-    root.after(1000, check_update)
+    _check_id = root.after(1000, check_update)
 
-    root.protocol("WM_DELETE_WINDOW", lambda: (player.stop(), root.destroy()))
+    root.protocol("WM_DELETE_WINDOW", lambda: stop())
     root.mainloop()
+
+
+def stop() -> None:
+    """Stop playback and close the window if running."""
+    global _root, _player, _after_id, _check_id
+    if _root is None:
+        return
+    if _after_id is not None:
+        try:
+            _root.after_cancel(_after_id)
+        except Exception:
+            pass
+        _after_id = None
+    if _check_id is not None:
+        try:
+            _root.after_cancel(_check_id)
+        except Exception:
+            pass
+        _check_id = None
+    if _player is not None:
+        try:
+            _player.stop()
+        except Exception:
+            pass
+        _player = None
+    try:
+        _root.after(0, _root.destroy)
+    except Exception:
+        pass
+    _root = None
+
+
+def play_playlist(path: str) -> None:
+    """Backward compatible wrapper for ``run``."""
+    run(path)
 
 
 if __name__ == "__main__":
@@ -195,4 +254,4 @@ if __name__ == "__main__":
         print("Usage: vlc_playlist.py playlist.json")
         sys.exit(1)
 
-    play_playlist(sys.argv[1])
+    run(sys.argv[1])

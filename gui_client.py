@@ -13,8 +13,8 @@ DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 import scheduler
 import tempfile
 from typing import Optional
-import subprocess
 import vlc_embed
+import vlc_playlist
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -88,8 +88,8 @@ class WSClient:
         self.playlist_items = []
         self.device_id = DEVICE_ID
         self.device_enabled = True
-        self.vlc_process = None
         self.vlc_thread = None
+        self.playlist_thread = None
         self.playlist_path = None
 
     def start(self):
@@ -117,9 +117,7 @@ class WSClient:
         """Launch or update VLC playlist without closing the window."""
 
         data = {"items": items, "start_index": int(start_index)}
-        script = pathlib.Path(__file__).with_name("vlc_playlist.py")
-
-        if self.vlc_process and self.vlc_process.poll() is None and self.playlist_path:
+        if self.playlist_thread and self.playlist_thread.is_alive() and self.playlist_path:
             try:
                 with open(self.playlist_path, "w", encoding="utf-8") as f:
                     json.dump(data, f)
@@ -127,16 +125,20 @@ class WSClient:
             except Exception:
                 pass
 
-        # Either VLC not running or playlist file missing -> start new process
-        if self.vlc_process and self.vlc_process.poll() is None:
-            self.vlc_process.terminate()
+        if self.playlist_thread and self.playlist_thread.is_alive():
+            vlc_playlist.stop()
+            self.playlist_thread.join(timeout=1)
+            self.playlist_thread = None
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
         json.dump(data, tmp)
         tmp.flush()
         tmp.close()
         self.playlist_path = tmp.name
-        self.vlc_process = subprocess.Popen([sys.executable, str(script), tmp.name])
+        self.playlist_thread = threading.Thread(
+            target=vlc_playlist.run, args=(self.playlist_path,), daemon=True
+        )
+        self.playlist_thread.start()
 
 
     def stop_vlc(self) -> None:
@@ -144,9 +146,10 @@ class WSClient:
             vlc_embed.stop()
             self.vlc_thread.join(timeout=1)
             self.vlc_thread = None
-        if self.vlc_process and self.vlc_process.poll() is None:
-            self.vlc_process.terminate()
-            self.vlc_process = None
+        if self.playlist_thread and self.playlist_thread.is_alive():
+            vlc_playlist.stop()
+            self.playlist_thread.join(timeout=1)
+            self.playlist_thread = None
         if self.playlist_path:
             try:
                 os.unlink(self.playlist_path)
