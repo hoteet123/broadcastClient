@@ -92,6 +92,7 @@ class WSClient:
         self.vlc_thread = None
         self.playlist_thread = None
         self.playlist_path = None
+        self.playmode = 0
 
     def start(self):
         self.thread.start()
@@ -212,8 +213,13 @@ class WSClient:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
-    async def update_schedules(self) -> None:
-        """Fetch schedules from the server and update the scheduler list."""
+    async def update_schedules(self, *, start_scheduler: bool | None = None) -> None:
+        """Fetch schedules from the server and update the scheduler list.
+
+        ``start_scheduler`` defaults to ``True`` unless ``self.playmode`` is 2.
+        """
+        if start_scheduler is None:
+            start_scheduler = self.playmode != 2
         schedules = await scheduler.fetch_schedules(cfg)
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             if self.scheduler_stop_event:
@@ -223,7 +229,7 @@ class WSClient:
 
         self.schedules = list(schedules)
 
-        if self.schedules and self.device_enabled:
+        if start_scheduler and self.schedules and self.device_enabled:
             self.scheduler_stop_event = threading.Event()
             self.scheduler_thread = threading.Thread(
                 target=scheduler.run,
@@ -266,6 +272,7 @@ class WSClient:
                     else:
                         enabled = bool(enabled)
                     playmode = int(data.get("Playmode", 0))
+                    self.playmode = playmode
                     res = data.get("Resolution") or data.get("resolution")
                     orient = data.get("Orientation")
                     if res or orient is not None:
@@ -281,8 +288,8 @@ class WSClient:
                         self.stop_vlc()
                     else:
                         self.update_status("사용함")
-                        await self.update_schedules()
-                        if playmode == 1:
+                        await self.update_schedules(start_scheduler=playmode != 2)
+                        if playmode in {1, 2}:
                             url = data.get("StreamURL") or data.get("url")
                             self.start_vlc(url)
                         else:
@@ -349,7 +356,7 @@ class WSClient:
                         self.playlist_items = new_items
                         self.start_vlc_playlist(self.playlist_items)
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
-                    await self.update_schedules()
+                    await self.update_schedules(start_scheduler=self.playmode != 2)
                 else:
                     print("[WS]", data)
         except ConnectionClosed:
