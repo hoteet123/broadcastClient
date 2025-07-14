@@ -4,7 +4,7 @@ block_cipher = None
 
 # 1) 분석 단계 ─ 포함할 파이썬 스크립트 나열
 a = Analysis(
-    ['gui_client.py', 'vlc_embed.py', 'vlc_playlist.py', 'scheduler.py'],
+    ['gui_client.py', 'vlc_embed.py', 'vlc_playlist.py', 'scheduler.py', 'display.py'],
     pathex=['.'],          # 프로젝트 루트(필요하면 절대경로로 수정)
     binaries=[],           # 추가 DLL/EXE가 있으면 [('src', 'dest')] 형식으로 지정
     datas=[],              # 리소스 파일 있으면 [('src/*', 'dest')] 식으로 지정

@@ -7,6 +7,7 @@ import uuid
 import ast
 import pathlib
 import os
+import display
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
@@ -265,6 +266,17 @@ class WSClient:
                     else:
                         enabled = bool(enabled)
                     playmode = int(data.get("Playmode", 0))
+                    resolution = data.get("Resolution") or data.get("resolution")
+                    orient = data.get("Orientation")
+                    try:
+                        orient_val = int(orient) if orient is not None else None
+                    except Exception:
+                        orient_val = None
+                    if resolution or orient_val is not None:
+                        try:
+                            display.apply_display_settings(resolution, orient_val)
+                        except Exception as e:
+                            print(f"Failed to apply display settings: {e}")
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")
