@@ -19,6 +19,8 @@ from urllib.parse import urlparse, urlunparse
 import pathlib
 import hashlib
 import httpx
+import threading
+from typing import Optional
 
 DEFAULT_IMAGE_DURATION = 5
 
@@ -36,8 +38,8 @@ _idx: int = 0
 _last_mtime: float = 0.0
 
 
-def cache_media(url: str) -> str:
-    """Return a local path to ``url``, downloading it if needed."""
+def cache_media(url: str, progress_cb=None) -> str:
+    """Return a playable URL and cache ``url`` in the background."""
     parsed = urlparse(url)
     if parsed.scheme in {"file", ""}:
         return url
@@ -49,15 +51,33 @@ def cache_media(url: str) -> str:
     if path.exists():
         return str(path)
 
-    try:
-        with httpx.Client(timeout=60.0) as cli:
-            r = cli.get(url)
-            r.raise_for_status()
-            path.write_bytes(r.content)
-        return str(path)
-    except Exception as e:  # noqa: BLE001
-        print(f"Failed to cache {url}: {e}")
-        return url
+    def _download() -> None:
+        try:
+            with httpx.Client(timeout=None) as cli:
+                with cli.stream("GET", url) as r:
+                    r.raise_for_status()
+                    total = int(r.headers.get("Content-Length") or 0)
+                    downloaded = 0
+                    with open(path, "wb") as f:
+                        for chunk in r.iter_bytes(65536):
+                            if not chunk:
+                                continue
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if progress_cb:
+                                progress_cb(downloaded, total, None)
+            if progress_cb:
+                progress_cb(total, total, None)
+        except Exception as e:  # noqa: BLE001
+            if progress_cb:
+                progress_cb(0, 0, e)
+            try:
+                path.unlink()
+            except Exception:
+                pass
+
+    threading.Thread(target=_download, daemon=True).start()
+    return url
 
 
 def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
@@ -117,6 +137,10 @@ def run(path: str) -> None:
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
     frame.pack(fill=tk.BOTH, expand=True)
+    progress_var = tk.StringVar()
+    progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
+    progress_label.pack(side="bottom", fill="x")
+    progress_label.pack_forget()
 
     instance = vlc.Instance()
     player = instance.media_player_new()
@@ -152,7 +176,24 @@ def run(path: str) -> None:
             root.after(0, play_next)
             return
 
-        media_url = cache_media(url)
+        def on_progress(done: int, total: int, err: Optional[Exception]) -> None:
+            def _update() -> None:
+                if err is not None:
+                    progress_label.pack_forget()
+                    return
+                if total > 0:
+                    pct = int(done * 100 / total)
+                    progress_var.set(f"Downloading... {pct}%")
+                else:
+                    progress_var.set(f"Downloading... {done} bytes")
+                if done >= total and total > 0:
+                    progress_label.pack_forget()
+                else:
+                    progress_label.pack(side="bottom", fill="x")
+
+            root.after(0, _update)
+
+        media_url = cache_media(url, on_progress)
         media = instance.media_new(media_url)
         player.set_media(media)
 
