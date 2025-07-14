@@ -275,6 +275,11 @@ class WSClient:
                     self.playmode = playmode
                     res = data.get("Resolution") or data.get("resolution")
                     orient = data.get("Orientation")
+                    if orient is not None:
+                        try:
+                            orient = int(orient)
+                        except Exception:
+                            orient = None
                     if res or orient is not None:
                         display_config.set_display_config(res, orient)
                     self.device_enabled = enabled

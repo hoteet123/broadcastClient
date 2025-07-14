@@ -4,25 +4,42 @@ import ctypes
 from typing import Optional
 
 
-def set_display_config(resolution: Optional[str] = None, orientation: Optional[int] = None) -> None:
-    """Set display resolution and orientation if possible."""
+ORI_DEG_MAP = {0: 0, 90: 1, 180: 2, 270: 3}
+
+
+def set_display_config(
+    resolution: Optional[str] = None, orientation: Optional[int] = None
+) -> None:
+    """Set display resolution and orientation if possible.
+
+    ``orientation`` can be supplied either as the original index values
+    ``0``-``3`` or as rotation degrees ``0``, ``90``, ``180`` and ``270``.
+    """
     width: Optional[int] = None
     height: Optional[int] = None
     if resolution:
         try:
-            w, h = resolution.lower().split('x')
+            w, h = resolution.lower().split("x")
             width = int(w)
             height = int(h)
         except Exception:
             width = height = None
+
+    orientation_idx: Optional[int] = None
+    if orientation is not None:
+        try:
+            ori_val = int(orientation)
+            orientation_idx = ORI_DEG_MAP.get(ori_val, ori_val)
+        except Exception:
+            orientation_idx = None
     if sys.platform.startswith('win'):
         try:
-            _set_windows_display(width, height, orientation)
+            _set_windows_display(width, height, orientation_idx)
         except Exception as e:
             print(f"Failed to set Windows display: {e}")
     else:
         try:
-            _set_xrandr_display(width, height, orientation)
+            _set_xrandr_display(width, height, orientation_idx)
         except Exception as e:
             print(f"Failed to set xrandr display: {e}")
 
