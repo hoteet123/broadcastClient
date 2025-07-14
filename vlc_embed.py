@@ -52,8 +52,15 @@ def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
         player.set_xwindow(handle)
 
 
-def play_media(url: str) -> None:
+_root: tk.Tk | None = None
+_player: vlc.MediaPlayer | None = None
+
+
+def run(url: str = DEFAULT_URL) -> None:
+    """Play ``url`` in an embedded fullscreen window."""
+    global _root, _player
     root = tk.Tk()
+    _root = root
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
@@ -61,6 +68,7 @@ def play_media(url: str) -> None:
 
     instance = vlc.Instance()
     player = instance.media_player_new()
+    _player = player
     media_url = cache_media(url)
     media = instance.media_new(media_url)
     player.set_media(media)
@@ -70,12 +78,34 @@ def play_media(url: str) -> None:
     _attach_handle(player, handle)
 
     player.play()
-    root.protocol("WM_DELETE_WINDOW", lambda: (player.stop(), root.destroy()))
+    root.protocol("WM_DELETE_WINDOW", lambda: stop())
     root.mainloop()
+
+
+def stop() -> None:
+    """Stop playback and close the window if running."""
+    global _root, _player
+    if _player is not None:
+        try:
+            _player.stop()
+        except Exception:
+            pass
+        _player = None
+    if _root is not None:
+        try:
+            _root.after(0, _root.destroy)
+        except Exception:
+            pass
+        _root = None
+
+
+# Backwards compatibility
+def play_media(url: str) -> None:
+    run(url)
 
 
 if __name__ == '__main__':
     url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
     if len(sys.argv) < 2:
         print(f'No URL provided. Using default: {DEFAULT_URL}')
-    play_media(url)
+    run(url)

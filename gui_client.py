@@ -14,6 +14,7 @@ import scheduler
 import tempfile
 from typing import Optional
 import subprocess
+import vlc_embed
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -88,6 +89,7 @@ class WSClient:
         self.device_id = DEVICE_ID
         self.device_enabled = True
         self.vlc_process = None
+        self.vlc_thread = None
         self.playlist_path = None
 
     def start(self):
@@ -102,12 +104,14 @@ class WSClient:
         self.stop_vlc()
 
     def start_vlc(self, url: Optional[str] = None) -> None:
-        """Launch VLC to play ``url`` in fullscreen."""
-        if self.vlc_process and self.vlc_process.poll() is None:
+        """Launch VLC to play ``url`` in fullscreen using a thread."""
+        if self.vlc_thread and self.vlc_thread.is_alive():
             return
-        script = pathlib.Path(__file__).with_name("vlc_embed.py")
         target_url = url or DEFAULT_URL
-        self.vlc_process = subprocess.Popen([sys.executable, str(script), target_url])
+        self.vlc_thread = threading.Thread(
+            target=vlc_embed.run, args=(target_url,), daemon=True
+        )
+        self.vlc_thread.start()
 
     def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
         """Launch or update VLC playlist without closing the window."""
@@ -136,6 +140,10 @@ class WSClient:
 
 
     def stop_vlc(self) -> None:
+        if self.vlc_thread and self.vlc_thread.is_alive():
+            vlc_embed.stop()
+            self.vlc_thread.join(timeout=1)
+            self.vlc_thread = None
         if self.vlc_process and self.vlc_process.poll() is None:
             self.vlc_process.terminate()
             self.vlc_process = None
