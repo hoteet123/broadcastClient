@@ -107,7 +107,9 @@ class WSClient:
         """Launch VLC to play ``url`` in fullscreen using a thread."""
         if self.vlc_thread and self.vlc_thread.is_alive():
             return
-        target_url = url or DEFAULT_URL
+        if not url:
+            return
+        target_url = url
         self.vlc_thread = threading.Thread(
             target=vlc_embed.run, args=(target_url,), daemon=True
         )
@@ -129,10 +131,8 @@ class WSClient:
             except Exception:
                 pass
 
-        if self.playlist_thread and self.playlist_thread.is_alive():
-            vlc_playlist.stop()
-            self.playlist_thread.join(timeout=1)
-            self.playlist_thread = None
+        # Starting a new playlist, ensure any previous VLC playback is stopped
+        self.stop_vlc()
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
         json.dump(data, tmp)
