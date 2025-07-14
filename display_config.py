@@ -4,7 +4,7 @@ import ctypes
 from typing import Optional
 
 
-def set_display_config(resolution: Optional[str] = None, orientation: Optional[int] = None) -> None:
+def set_display_config(resolution: Optional[str] = None, orientation: Optional[int | str] = None) -> None:
     """Set display resolution and orientation if possible."""
     width: Optional[int] = None
     height: Optional[int] = None
@@ -15,6 +15,11 @@ def set_display_config(resolution: Optional[str] = None, orientation: Optional[i
             height = int(h)
         except Exception:
             width = height = None
+    if orientation is not None:
+        try:
+            orientation = int(orientation)
+        except Exception:
+            orientation = None
     if sys.platform.startswith('win'):
         try:
             _set_windows_display(width, height, orientation)
@@ -47,8 +52,13 @@ def _set_xrandr_display(width: Optional[int], height: Optional[int], orientation
     if width and height:
         cmd += ['--mode', f'{width}x{height}']
     if orientation is not None:
-        ori_map = {0: 'normal', 1: 'left', 2: 'inverted', 3: 'right', 4: 'normal'}
-        cmd += ['--rotate', ori_map.get(orientation % 4, 'normal')]
+        val = int(orientation)
+        if val in {0, 1, 2, 3, 4}:
+            angle = {0: 0, 1: 90, 2: 180, 3: 270, 4: 0}[val]
+        else:
+            angle = val % 360
+        ori_map = {0: 'normal', 90: 'left', 180: 'inverted', 270: 'right'}
+        cmd += ['--rotate', ori_map.get(angle, 'normal')]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -95,7 +105,16 @@ if sys.platform.startswith('win'):
     DM_PELSHEIGHT = 0x00100000
     DM_DISPLAYORIENTATION = 0x00000080
 
-    ORI_MAP = {0: 0, 1: 1, 2: 2, 3: 3, 4: 0}
+    ORI_MAP = {
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 0,
+        90: 1,
+        180: 2,
+        270: 3,
+    }
 
     def _set_windows_display(width: Optional[int], height: Optional[int], orientation: Optional[int]) -> None:
         user32 = ctypes.windll.user32
@@ -105,12 +124,16 @@ if sys.platform.startswith('win'):
             return
         changed = False
         if orientation is not None:
-            ori = ORI_MAP.get(orientation % 4, 0)
+            val = int(orientation)
+            ori = ORI_MAP.get(val)
+            if ori is None:
+                ori = ORI_MAP.get(val % 360, 0)
             if dm.dmDisplayOrientation != ori:
                 dm.dmDisplayOrientation = ori
                 dm.dmFields |= DM_DISPLAYORIENTATION
                 changed = True
-            if ori in (1, 3) and width and height:
+            deg = {0: 0, 1: 90, 2: 180, 3: 270}.get(ori, 0)
+            if deg in (90, 270) and width and height:
                 width, height = height, width
         if width and height:
             if dm.dmPelsWidth != width or dm.dmPelsHeight != height:
