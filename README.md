@@ -50,3 +50,8 @@ The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
 `play-media` command with a `media_id` will immediately start playback of
 the matching playlist item.
+
+If the server configuration includes `Resolution` (e.g. `1920x1080`) and
+`Orientation` (`0`-`3`), the client attempts to update the current display
+settings accordingly on Windows or X11-based systems using built-in APIs
+or `xrandr`.
