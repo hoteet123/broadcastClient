@@ -116,6 +116,10 @@ class WSClient:
     def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
         """Launch or update VLC playlist without closing the window."""
 
+        if not items:
+            self.stop_vlc()
+            return
+
         data = {"items": items, "start_index": int(start_index)}
         if self.playlist_thread and self.playlist_thread.is_alive() and self.playlist_path:
             try:
