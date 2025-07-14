@@ -1,50 +1,44 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+block_cipher = None
 
+# 1) 분석 단계 ─ 포함할 파이썬 스크립트 나열
 a = Analysis(
-    ['gui_client.py'],
-    pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[
-    'PIL', 'httpx', 'httpcore', 'h11',
-    'anyio', 'sniffio', 'idna', 'certifi',
-    'pystray',                 # ★
-    'pystray._util', 'pystray._base', 'pystray._win32',  # 서브모듈
-    'win32api', 'win32gui', 'win32con', 'pywintypes',    # pywin32
-    ],
+    ['gui_client.py', 'vlc_embed.py', 'vlc_playlist.py', 'scheduler.py'],
+    pathex=['.'],          # 프로젝트 루트(필요하면 절대경로로 수정)
+    binaries=[],           # 추가 DLL/EXE가 있으면 [('src', 'dest')] 형식으로 지정
+    datas=[],              # 리소스 파일 있으면 [('src/*', 'dest')] 식으로 지정
+    hiddenimports=[],      # 동적 import 모듈은 여기에
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[],           # 제외할 모듈
     noarchive=False,
     optimize=0,
 )
-pyz = PYZ(a.pure)
 
+# 2) 파이썬 코드 → 압축된 pyz
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+# 3) 실행 파일 생성 ─ onefile=True 가 핵심
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name='gui_client',
+    name='gui_client',           # dist/gui_client.exe
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    console=True,
+    upx=True,                    # UPX 압축 (미설치 시 False 로)
+    console=True,                # GUI 앱이면 False 로 바꿔도 됨
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='gui_client',
+    icon=None,                   # 아이콘 넣으려면 'icon.ico'
+    onefile=True                 # ★ 단일 EXE 플래그
 )
