@@ -1,10 +1,27 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional
+from typing import Optional, Union
 
 
-def set_display_config(resolution: Optional[str] = None, orientation: Optional[int] = None) -> None:
+def _normalize_orientation(value: Optional[Union[int, str]]) -> Optional[int]:
+    """Convert orientation to degrees (0/90/180/270) or return None."""
+    if value is None:
+        return None
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return None
+    if v in {0, 1, 2, 3, 4}:
+        v = {0: 0, 1: 90, 2: 180, 3: 270, 4: 0}[v]
+    else:
+        v = v % 360
+    if v not in (0, 90, 180, 270):
+        return None
+    return v
+
+
+def set_display_config(resolution: Optional[str] = None, orientation: Optional[Union[int, str]] = None) -> None:
     """Set display resolution and orientation if possible."""
     width: Optional[int] = None
     height: Optional[int] = None
@@ -15,14 +32,15 @@ def set_display_config(resolution: Optional[str] = None, orientation: Optional[i
             height = int(h)
         except Exception:
             width = height = None
+    ori_deg = _normalize_orientation(orientation)
     if sys.platform.startswith('win'):
         try:
-            _set_windows_display(width, height, orientation)
+            _set_windows_display(width, height, ori_deg)
         except Exception as e:
             print(f"Failed to set Windows display: {e}")
     else:
         try:
-            _set_xrandr_display(width, height, orientation)
+            _set_xrandr_display(width, height, ori_deg)
         except Exception as e:
             print(f"Failed to set xrandr display: {e}")
 
@@ -47,8 +65,8 @@ def _set_xrandr_display(width: Optional[int], height: Optional[int], orientation
     if width and height:
         cmd += ['--mode', f'{width}x{height}']
     if orientation is not None:
-        ori_map = {0: 'normal', 1: 'left', 2: 'inverted', 3: 'right', 4: 'normal'}
-        cmd += ['--rotate', ori_map.get(orientation % 4, 'normal')]
+        ori_map = {0: 'normal', 90: 'left', 180: 'inverted', 270: 'right'}
+        cmd += ['--rotate', ori_map.get(orientation, 'normal')]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -95,7 +113,7 @@ if sys.platform.startswith('win'):
     DM_PELSHEIGHT = 0x00100000
     DM_DISPLAYORIENTATION = 0x00000080
 
-    ORI_MAP = {0: 0, 1: 1, 2: 2, 3: 3, 4: 0}
+    ORI_MAP = {0: 0, 90: 1, 180: 2, 270: 3}
 
     def _set_windows_display(width: Optional[int], height: Optional[int], orientation: Optional[int]) -> None:
         user32 = ctypes.windll.user32
@@ -105,7 +123,7 @@ if sys.platform.startswith('win'):
             return
         changed = False
         if orientation is not None:
-            ori = ORI_MAP.get(orientation % 4, 0)
+            ori = ORI_MAP.get(orientation, 0)
             if dm.dmDisplayOrientation != ori:
                 dm.dmDisplayOrientation = ori
                 dm.dmFields |= DM_DISPLAYORIENTATION

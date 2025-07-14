@@ -47,7 +47,7 @@ Linux/Raspbian environments.
 If no stream URL is supplied, it defaults to `http://nas.3no.kr/test.mp4`.
 
 Config messages may also include `Resolution` (e.g. `"1920x1080"`) and
-`Orientation` (0-4) fields.  When present, the client attempts to update the
+`Orientation` values like `0`, `90`, `180` or `270`. When present, the client attempts to update the
 system's display settings accordingly on Windows and Linux (including
 Raspberry Pi and Orange Pi) using platform specific commands.
 
