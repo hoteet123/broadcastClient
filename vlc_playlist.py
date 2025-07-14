@@ -133,7 +133,13 @@ def run(path: str) -> None:
 
     root = tk.Tk()
     _root = root
-    root.attributes("-fullscreen", True)
+    root.update_idletasks()
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    if screen_h > screen_w:
+        root.geometry(f"{screen_h}x{screen_h}+0+0")
+    else:
+        root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
     frame.pack(fill=tk.BOTH, expand=True)
