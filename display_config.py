@@ -133,7 +133,12 @@ if sys.platform.startswith('win'):
                 dm.dmFields |= DM_DISPLAYORIENTATION
                 changed = True
             deg = {0: 0, 1: 90, 2: 180, 3: 270}.get(ori, 0)
-            if deg in (90, 270) and width and height:
+        else:
+            deg = {0: 0, 1: 90, 2: 180, 3: 270}.get(dm.dmDisplayOrientation, 0)
+        if width is None or height is None:
+            width = dm.dmPelsWidth
+            height = dm.dmPelsHeight
+            if deg in (90, 270):
                 width, height = height, width
         if width and height:
             if dm.dmPelsWidth != width or dm.dmPelsHeight != height:
