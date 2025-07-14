@@ -15,6 +15,7 @@ import tempfile
 from typing import Optional
 import vlc_embed
 import vlc_playlist
+import display_config
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -265,6 +266,10 @@ class WSClient:
                     else:
                         enabled = bool(enabled)
                     playmode = int(data.get("Playmode", 0))
+                    res = data.get("Resolution") or data.get("resolution")
+                    orient = data.get("Orientation")
+                    if res or orient is not None:
+                        display_config.set_display_config(res, orient)
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")

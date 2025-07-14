@@ -46,6 +46,11 @@ Tkinter window using the correct API for Windows, macOS, or X11-based
 Linux/Raspbian environments.
 If no stream URL is supplied, it defaults to `http://nas.3no.kr/test.mp4`.
 
+Config messages may also include `Resolution` (e.g. `"1920x1080"`) and
+`Orientation` (0-4) fields.  When present, the client attempts to update the
+system's display settings accordingly on Windows and Linux (including
+Raspberry Pi and Orange Pi) using platform specific commands.
+
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
 `play-media` command with a `media_id` will immediately start playback of
