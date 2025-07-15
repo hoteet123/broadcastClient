@@ -50,6 +50,10 @@ Config messages may also include `Resolution` (e.g. `"1920x1080"`) and
 `Orientation` (0-4) fields.  When present, the client attempts to update the
 system's display settings accordingly on Windows and Linux (including
 Raspberry Pi and Orange Pi) using platform specific commands.
+Additionally a `GuiImages` array may be provided to overlay PNG or GIF images
+on top of the VLC window.  Each entry should contain `ImageUrl`, `X`, `Y`,
+`Width` and `Height` values.  GIF images animate and transparency is
+respected.
 
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent

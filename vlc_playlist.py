@@ -20,7 +20,9 @@ import pathlib
 import hashlib
 import httpx
 import threading
-from typing import Optional
+import io
+from typing import Optional, List, Dict
+from PIL import Image, ImageTk, ImageSequence
 
 DEFAULT_IMAGE_DURATION = 5
 
@@ -36,6 +38,96 @@ _playlist_path: str | None = None
 _items: list | None = None
 _idx: int = 0
 _last_mtime: float = 0.0
+_gui_images: List[Dict[str, any]] = []
+_gui_labels: List[Dict[str, any]] = []
+
+
+def _load_image_frames(url: str, width: int | None, height: int | None) -> tuple[list, list]:
+    try:
+        if urlparse(url).scheme in {"http", "https"}:
+            r = httpx.get(url, timeout=30)
+            r.raise_for_status()
+            data = io.BytesIO(r.content)
+            img = Image.open(data)
+        else:
+            img = Image.open(url)
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(e)
+
+    frames = []
+    delays = []
+    for frame in ImageSequence.Iterator(img):
+        if width and height:
+            frame = frame.resize((int(width), int(height)), Image.LANCZOS)
+        frame = frame.convert("RGBA")
+        frames.append(ImageTk.PhotoImage(frame))
+        delays.append(int(frame.info.get("duration", 100)))
+    if not frames:
+        if width and height:
+            img = img.resize((int(width), int(height)), Image.LANCZOS)
+        frames.append(ImageTk.PhotoImage(img.convert("RGBA")))
+        delays.append(int(img.info.get("duration", 100)))
+    return frames, delays
+
+
+def _clear_gui_images() -> None:
+    for item in _gui_labels:
+        try:
+            item["label"].destroy()
+        except Exception:
+            pass
+    _gui_labels.clear()
+
+
+def _apply_gui_images() -> None:
+    if _root is None:
+        return
+    _clear_gui_images()
+    for info in _gui_images:
+        url = str(info.get("ImageUrl") or info.get("url") or "")
+        if not url:
+            continue
+        w = info.get("Width")
+        h = info.get("Height")
+        try:
+            frames, delays = _load_image_frames(url, int(float(w)) if w else None, int(float(h)) if h else None)
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to load GUI image {url}: {e}")
+            continue
+        if not frames:
+            continue
+        label = tk.Label(_root, image=frames[0], bd=0, highlightthickness=0)
+        try:
+            x = int(float(info.get("X", 0)))
+            y = int(float(info.get("Y", 0)))
+        except Exception:
+            x = y = 0
+        opts = {"x": x, "y": y}
+        if w and h:
+            try:
+                opts["width"] = int(float(w))
+                opts["height"] = int(float(h))
+            except Exception:
+                pass
+        label.place(**opts)
+        entry = {"label": label, "frames": frames, "delays": delays}
+        _gui_labels.append(entry)
+
+        if len(frames) > 1:
+            def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
+                if not lbl.winfo_exists():
+                    return
+                lbl.configure(image=frs[idx])
+                lbl.after(durs[idx], animate, (idx + 1) % len(frs), lbl, frs, durs)
+
+            label.after(delays[0], animate, 1, label, frames, delays)
+
+
+def set_gui_images(images: List[Dict[str, any]]) -> None:
+    global _gui_images
+    _gui_images = list(images) if images else []
+    if _root is not None:
+        _root.after(0, _apply_gui_images)
 
 
 def cache_media(url: str, progress_cb=None) -> str:
@@ -164,6 +256,7 @@ def run(
     _player = player
     root.update_idletasks()
     _attach_handle(player, frame.winfo_id())
+    _apply_gui_images()
 
     items, idx = load()
     _items = items
@@ -274,7 +367,7 @@ def run(
 
 def stop() -> None:
     """Stop playback and close the window if running."""
-    global _root, _player, _after_id, _check_id
+    global _root, _player, _after_id, _check_id, _gui_images
     if _root is None:
         return
     if _after_id is not None:
@@ -300,6 +393,8 @@ def stop() -> None:
     except Exception:
         pass
     _root = None
+    _clear_gui_images()
+    _gui_images = []
 
 
 def play_playlist(path: str) -> None:

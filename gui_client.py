@@ -97,6 +97,7 @@ class WSClient:
         self.vlc_y = None
         self.vlc_width = None
         self.vlc_height = None
+        self.gui_images = []
 
     def start(self):
         self.thread.start()
@@ -126,6 +127,7 @@ class WSClient:
             target=vlc_embed.run, args=(target_url,), kwargs=kwargs, daemon=True
         )
         self.vlc_thread.start()
+        vlc_embed.set_gui_images(self.gui_images)
 
     def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
         """Launch or update VLC playlist without closing the window."""
@@ -164,6 +166,7 @@ class WSClient:
             daemon=True,
         )
         self.playlist_thread.start()
+        vlc_playlist.set_gui_images(self.gui_images)
 
 
     def stop_vlc(self) -> None:
@@ -181,6 +184,8 @@ class WSClient:
             except FileNotFoundError:
                 pass
             self.playlist_path = None
+        vlc_embed.set_gui_images([])
+        vlc_playlist.set_gui_images([])
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -301,6 +306,11 @@ class WSClient:
                     orient = data.get("Orientation")
                     if res or orient is not None:
                         display_config.set_display_config(res, orient)
+                    images = data.get("GuiImages")
+                    if isinstance(images, list):
+                        self.gui_images = list(images)
+                        vlc_embed.set_gui_images(self.gui_images)
+                        vlc_playlist.set_gui_images(self.gui_images)
                     try:
                         if data.get("VlcX") is not None:
                             self.vlc_x = int(float(data.get("VlcX")))
