@@ -93,6 +93,10 @@ class WSClient:
         self.playlist_thread = None
         self.playlist_path = None
         self.playmode = 0
+        self.vlc_x = None
+        self.vlc_y = None
+        self.vlc_width = None
+        self.vlc_height = None
 
     def start(self):
         self.thread.start()
@@ -106,14 +110,20 @@ class WSClient:
         self.stop_vlc()
 
     def start_vlc(self, url: Optional[str] = None) -> None:
-        """Launch VLC to play ``url`` in fullscreen using a thread."""
+        """Launch VLC to play ``url`` using a thread."""
         if self.vlc_thread and self.vlc_thread.is_alive():
             return
         if not url:
             return
         target_url = url
+        kwargs = {
+            "x": self.vlc_x,
+            "y": self.vlc_y,
+            "width": self.vlc_width,
+            "height": self.vlc_height,
+        }
         self.vlc_thread = threading.Thread(
-            target=vlc_embed.run, args=(target_url,), daemon=True
+            target=vlc_embed.run, args=(target_url,), kwargs=kwargs, daemon=True
         )
         self.vlc_thread.start()
 
@@ -141,8 +151,17 @@ class WSClient:
         tmp.flush()
         tmp.close()
         self.playlist_path = tmp.name
+        kwargs = {
+            "x": self.vlc_x,
+            "y": self.vlc_y,
+            "width": self.vlc_width,
+            "height": self.vlc_height,
+        }
         self.playlist_thread = threading.Thread(
-            target=vlc_playlist.run, args=(self.playlist_path,), daemon=True
+            target=vlc_playlist.run,
+            args=(self.playlist_path,),
+            kwargs=kwargs,
+            daemon=True,
         )
         self.playlist_thread.start()
 
@@ -273,10 +292,26 @@ class WSClient:
                         enabled = bool(enabled)
                     playmode = int(data.get("Playmode", 0))
                     self.playmode = playmode
+                    dev_id = data.get("DeviceIdentifier")
+                    if dev_id:
+                        self.device_id = str(dev_id)
+                        cfg["DEVICE_ID"] = str(dev_id)
+                        save_config(cfg)
                     res = data.get("Resolution") or data.get("resolution")
                     orient = data.get("Orientation")
                     if res or orient is not None:
                         display_config.set_display_config(res, orient)
+                    try:
+                        if data.get("VlcX") is not None:
+                            self.vlc_x = int(float(data.get("VlcX")))
+                        if data.get("VlcY") is not None:
+                            self.vlc_y = int(float(data.get("VlcY")))
+                        if data.get("VlcWidth") is not None:
+                            self.vlc_width = int(float(data.get("VlcWidth")))
+                        if data.get("VlcHeight") is not None:
+                            self.vlc_height = int(float(data.get("VlcHeight")))
+                    except Exception:
+                        pass
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")

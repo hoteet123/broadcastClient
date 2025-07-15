@@ -107,8 +107,20 @@ def fix_media_url(url: str) -> str:
     return url
 
 
-def run(path: str) -> None:
-    """Play playlist defined in ``path`` and reload when it changes."""
+def run(
+    path: str,
+    *,
+    x: int | None = None,
+    y: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> None:
+    """Play playlist defined in ``path`` and reload when it changes.
+
+    The player always opens a fullscreen window.  When ``width`` and ``height``
+    are supplied the VLC player is embedded at ``x``, ``y`` with the given size.
+    Otherwise the player fills the entire window.
+    """
 
     def load() -> tuple[list, int]:
         try:
@@ -136,7 +148,12 @@ def run(path: str) -> None:
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
-    frame.pack(fill=tk.BOTH, expand=True)
+    if width and height:
+        fx = int(x) if x is not None else 0
+        fy = int(y) if y is not None else 0
+        frame.place(x=fx, y=fy, width=int(width), height=int(height))
+    else:
+        frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
     progress_label.pack(side="bottom", fill="x")

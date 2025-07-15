@@ -76,15 +76,32 @@ _root: tk.Tk | None = None
 _player: vlc.MediaPlayer | None = None
 
 
-def run(url: str = DEFAULT_URL) -> None:
-    """Play ``url`` in an embedded fullscreen window."""
+def run(
+    url: str = DEFAULT_URL,
+    *,
+    x: int | None = None,
+    y: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> None:
+    """Play ``url`` in a fullscreen window with an embedded player.
+
+    ``x``/``y`` specify the top left corner of the embedded player within the
+    fullscreen window and ``width``/``height`` control its size.  When no
+    geometry is provided the player fills the entire screen.
+    """
     global _root, _player
     root = tk.Tk()
     _root = root
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
-    frame.pack(fill=tk.BOTH, expand=True)
+    if width and height:
+        fx = int(x) if x is not None else 0
+        fy = int(y) if y is not None else 0
+        frame.place(x=fx, y=fy, width=int(width), height=int(height))
+    else:
+        frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
     progress_label.pack(side="bottom", fill="x")
