@@ -6,7 +6,7 @@ import tkinter as tk
 import vlc
 import pathlib
 import hashlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 import httpx
 import threading
 import io
@@ -80,6 +80,16 @@ _gui_images: List[Dict[str, any]] = []
 _gui_labels: List[Dict[str, any]] = []
 
 
+def fix_media_url(url: str) -> str:
+    """Convert old NAS URLs to the new format."""
+    parsed = urlparse(url)
+    if parsed.netloc == "nas.3no.kr:9006" and parsed.path.startswith("/web/"):
+        new_path = parsed.path[len("/web") :]
+        parsed = parsed._replace(netloc="nas.3no.kr", path=new_path)
+        return urlunparse(parsed)
+    return url
+
+
 def _load_image_frames(url: str, width: int | None, height: int | None) -> tuple[list, list]:
     """Return a list of PhotoImage frames and their durations."""
     try:
@@ -124,6 +134,8 @@ def _apply_gui_images() -> None:
     _clear_gui_images()
     for info in _gui_images:
         url = str(info.get("ImageUrl") or info.get("url") or "")
+        if url:
+            url = fix_media_url(url)
         if not url:
             continue
         w = info.get("Width")

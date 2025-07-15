@@ -85,6 +85,8 @@ def _apply_gui_images() -> None:
     _clear_gui_images()
     for info in _gui_images:
         url = str(info.get("ImageUrl") or info.get("url") or "")
+        if url:
+            url = fix_media_url(url)
         if not url:
             continue
         w = info.get("Width")
