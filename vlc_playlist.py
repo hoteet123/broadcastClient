@@ -31,19 +31,19 @@ RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 CACHE_DIR = RUN_DIR / "cache"
 
 
-_root: tk.Tk | None = None
-_player: vlc.MediaPlayer | None = None
-_after_id: str | None = None
-_check_id: str | None = None
-_playlist_path: str | None = None
-_items: list | None = None
+_root: Optional[tk.Tk] = None
+_player: Optional[vlc.MediaPlayer] = None
+_after_id: Optional[str] = None
+_check_id: Optional[str] = None
+_playlist_path: Optional[str] = None
+_items: Optional[list] = None
 _idx: int = 0
 _last_mtime: float = 0.0
 _gui_images: List[Dict[str, any]] = []
 _gui_labels: List[Dict[str, any]] = []
 
 
-def _load_image_frames(url: str, width: int | None, height: int | None) -> tuple[list, list]:
+def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) -> tuple[List, List]:
     try:
         if urlparse(url).scheme in {"http", "https"}:
             r = httpx.get(url, timeout=30)
@@ -205,10 +205,10 @@ def fix_media_url(url: str) -> str:
 def run(
     path: str,
     *,
-    x: int | None = None,
-    y: int | None = None,
-    width: int | None = None,
-    height: int | None = None,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
 ) -> None:
     """Play playlist defined in ``path`` and reload when it changes.
 
@@ -217,7 +217,7 @@ def run(
     Otherwise the player fills the entire window.
     """
 
-    def load() -> tuple[list, int]:
+    def load() -> tuple[List, int]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)

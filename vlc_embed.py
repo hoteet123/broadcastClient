@@ -75,8 +75,8 @@ def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
         player.set_xwindow(handle)
 
 
-_root: tk.Tk | None = None
-_player: vlc.MediaPlayer | None = None
+_root: Optional[tk.Tk] = None
+_player: Optional[vlc.MediaPlayer] = None
 _gui_images: List[Dict[str, any]] = []
 _gui_labels: List[Dict[str, any]] = []
 
@@ -91,7 +91,7 @@ def fix_media_url(url: str) -> str:
     return url
 
 
-def _load_image_frames(url: str, width: int | None, height: int | None) -> tuple[list, list]:
+def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) -> tuple[List, List]:
     """Return a list of PhotoImage frames and their durations."""
     try:
         if urlparse(url).scheme in {"http", "https"}:
@@ -186,10 +186,10 @@ def set_gui_images(images: List[Dict[str, any]]) -> None:
 def run(
     url: str = DEFAULT_URL,
     *,
-    x: int | None = None,
-    y: int | None = None,
-    width: int | None = None,
-    height: int | None = None,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
 ) -> None:
     """Play ``url`` in a fullscreen window with an embedded player.
 

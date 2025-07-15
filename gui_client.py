@@ -240,7 +240,7 @@ class WSClient:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
-    async def update_schedules(self, *, start_scheduler: bool | None = None) -> None:
+    async def update_schedules(self, *, start_scheduler: Optional[bool] = None) -> None:
         """Fetch schedules from the server and update the scheduler list.
 
         ``start_scheduler`` defaults to ``True`` unless ``self.playmode`` is 2.

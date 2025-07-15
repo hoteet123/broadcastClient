@@ -1,10 +1,10 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional
+from typing import Optional, Union
 
 
-def set_display_config(resolution: Optional[str] = None, orientation: Optional[int | str] = None) -> None:
+def set_display_config(resolution: Optional[str] = None, orientation: Optional[Union[int, str]] = None) -> None:
     """Set display resolution and orientation if possible."""
     width: Optional[int] = None
     height: Optional[int] = None
