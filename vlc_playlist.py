@@ -26,8 +26,9 @@ from PIL import Image, ImageTk, ImageSequence
 
 DEFAULT_IMAGE_DURATION = 5
 
-# Directory used to store cached media files
-CACHE_DIR = pathlib.Path(__file__).with_name("cache")
+# Directory used to store cached media files next to the running executable/script
+RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
+CACHE_DIR = RUN_DIR / "cache"
 
 
 _root: tk.Tk | None = None

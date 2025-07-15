@@ -16,8 +16,9 @@ from PIL import Image, ImageTk, ImageSequence
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
-# Directory to store cached media files
-CACHE_DIR = pathlib.Path(__file__).with_name("cache")
+# Directory to store cached media files next to the running executable/script
+RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
+CACHE_DIR = RUN_DIR / "cache"
 
 
 def cache_media(url: str, progress_cb=None) -> str:

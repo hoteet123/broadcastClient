@@ -19,6 +19,9 @@ if getattr(sys, "frozen", False) and sys.platform == "win32":
 else:
     CFG_PATH = pathlib.Path(__file__).with_name("client.cfg")
 
+# Directory to store temporary media next to the running executable/script
+RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
+
 
 def load_config() -> Dict[str, Any]:
     if not CFG_PATH.exists():
@@ -91,7 +94,7 @@ def set_volume(level: int) -> None:
 
 def play_mp3(data: bytes) -> None:
     """Play MP3 data using an available backend without blocking."""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=RUN_DIR)
     tmp.write(data)
     tmp.flush()
     tmp.close()

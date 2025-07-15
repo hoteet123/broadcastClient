@@ -17,6 +17,9 @@ import vlc_embed
 import vlc_playlist
 import display_config
 
+# Directory where the script or executable is running
+RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
+
 """Simple Tk GUI client with a system tray icon.
 
 서버 연결 후 `/broadcast-schedules` 를 호출해 방송 예약 목록을 출력한다.
@@ -148,7 +151,7 @@ class WSClient:
         # Starting a new playlist, ensure any previous VLC playback is stopped
         self.stop_vlc()
 
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8")
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8", dir=RUN_DIR)
         json.dump(data, tmp)
         tmp.flush()
         tmp.close()
@@ -208,7 +211,7 @@ class WSClient:
                 r = await cli.get(url)
                 r.raise_for_status()
 
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=RUN_DIR)
             tmp.write(r.content)
             tmp.flush()
             tmp.close()
