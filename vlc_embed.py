@@ -109,12 +109,12 @@ def _load_image_frames(url: str, width: int | None, height: int | None) -> tuple
         if width and height:
             frame = frame.resize((int(width), int(height)), Image.LANCZOS)
         frame = frame.convert("RGBA")
-        frames.append(ImageTk.PhotoImage(frame))
+        frames.append(ImageTk.PhotoImage(frame, master=_root))
         delays.append(int(frame.info.get("duration", 100)))
     if not frames:
         if width and height:
             img = img.resize((int(width), int(height)), Image.LANCZOS)
-        frames.append(ImageTk.PhotoImage(img.convert("RGBA")))
+        frames.append(ImageTk.PhotoImage(img.convert("RGBA"), master=_root))
         delays.append(int(img.info.get("duration", 100)))
     return frames, delays
 
@@ -129,7 +129,7 @@ def _clear_gui_images() -> None:
 
 
 def _apply_gui_images() -> None:
-    if _root is None:
+    if _root is None or not _root.winfo_exists():
         return
     _clear_gui_images()
     for info in _gui_images:
