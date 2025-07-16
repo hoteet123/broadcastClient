@@ -8,8 +8,8 @@ import pathlib
 import hashlib
 from urllib.parse import urlparse, urlunparse
 import httpx
-import threading
 import io
+import time
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
 
@@ -22,7 +22,7 @@ CACHE_DIR = RUN_DIR / "cache"
 
 
 def cache_media(url: str, progress_cb=None) -> str:
-    """Return a playable URL and cache the file in the background."""
+    """Download ``url`` to the cache synchronously and return the local path."""
     parsed = urlparse(url)
     if parsed.scheme in {"file", ""}:
         return url
@@ -34,33 +34,46 @@ def cache_media(url: str, progress_cb=None) -> str:
     if path.exists():
         return str(path)
 
-    def _download() -> None:
+    tmp_path = path.with_suffix(path.suffix + ".part")
+    if tmp_path.exists():
         try:
-            with httpx.Client(timeout=None) as cli:
-                with cli.stream("GET", url) as r:
-                    r.raise_for_status()
-                    total = int(r.headers.get("Content-Length") or 0)
-                    downloaded = 0
-                    with open(path, "wb") as f:
-                        for chunk in r.iter_bytes(65536):
-                            if not chunk:
-                                continue
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if progress_cb:
-                                progress_cb(downloaded, total, None)
-            if progress_cb:
-                progress_cb(total, total, None)
-        except Exception as e:  # noqa: BLE001
-            if progress_cb:
-                progress_cb(0, 0, e)
-            try:
-                path.unlink()
-            except Exception:
-                pass
+            tmp_path.unlink()
+        except Exception:
+            pass
 
-    threading.Thread(target=_download, daemon=True).start()
-    return url
+    start = time.time()
+    downloaded = 0
+    total = 0
+    try:
+        with httpx.Client(timeout=None) as cli:
+            with cli.stream("GET", url) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("Content-Length") or 0)
+                with open(tmp_path, "wb") as f:
+                    for chunk in r.iter_bytes(65536):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_cb:
+                            elapsed = time.time() - start
+                            speed = downloaded / elapsed if elapsed else 0
+                            progress_cb(downloaded, total, speed, elapsed, None)
+        tmp_path.rename(path)
+        if progress_cb:
+            elapsed = time.time() - start
+            speed = downloaded / elapsed if elapsed else 0
+            progress_cb(downloaded, total, speed, elapsed, None)
+    except Exception as e:  # noqa: BLE001
+        if progress_cb:
+            progress_cb(downloaded, total, 0, time.time() - start, e)
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
+        raise
+
+    return str(path)
 
 
 def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
@@ -211,30 +224,41 @@ def run(
         frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
-    progress_label.pack(side="bottom", fill="x")
-    progress_label.pack_forget()
+    progress_label.place(relx=0.5, rely=0.5, anchor="center")
+    progress_label.place_forget()
 
     instance = vlc.Instance()
     player = instance.media_player_new()
     _player = player
-    def on_progress(done: int, total: int, err: Optional[Exception]) -> None:
-        def _update() -> None:
-            if err is not None:
-                progress_label.pack_forget()
-                return
-            if total > 0:
-                pct = int(done * 100 / total)
-                progress_var.set(f"Downloading... {pct}%")
-            else:
-                progress_var.set(f"Downloading... {done} bytes")
-            if done >= total and total > 0:
-                progress_label.pack_forget()
-            else:
-                progress_label.pack(side="bottom", fill="x")
+    def on_progress(done: int, total: int, speed: float, elapsed: float, err: Optional[Exception]) -> None:
+        if err is not None:
+            progress_label.place_forget()
+            root.update_idletasks()
+            return
+        if total > 0:
+            pct = int(done * 100 / total)
+            remain = 100 - pct
+            unit = "KB/s" if speed < 1024 * 1024 else "MB/s"
+            sp = speed / 1024 if unit == "KB/s" else speed / 1024 / 1024
+            progress_var.set(f"다운로드중 {sp:.1f} {unit} {elapsed:.1f}s 남은 {remain}%")
+        else:
+            unit = "KB/s" if speed < 1024 * 1024 else "MB/s"
+            sp = speed / 1024 if unit == "KB/s" else speed / 1024 / 1024
+            progress_var.set(f"다운로드중 {sp:.1f} {unit} {elapsed:.1f}s")
+        if done >= total and total > 0:
+            progress_label.place_forget()
+        else:
+            progress_label.place(relx=0.5, rely=0.5, anchor="center")
+        root.update_idletasks()
 
-        root.after(0, _update)
+    try:
+        media_url = cache_media(url, on_progress)
+    except Exception as e:  # noqa: BLE001
+        progress_var.set(f"Download failed: {e}")
+        progress_label.place(relx=0.5, rely=0.5, anchor="center")
+        root.update_idletasks()
+        return
 
-    media_url = cache_media(url, on_progress)
     media = instance.media_new(media_url)
     player.set_media(media)
 
