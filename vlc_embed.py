@@ -9,6 +9,7 @@ import hashlib
 from urllib.parse import urlparse, urlunparse
 import httpx
 import threading
+from media_cache import download_media
 import io
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
@@ -16,51 +17,6 @@ from PIL import Image, ImageTk, ImageSequence
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
-# Directory to store cached media files next to the running executable/script
-RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
-CACHE_DIR = RUN_DIR / "cache"
-
-
-def cache_media(url: str, progress_cb=None) -> str:
-    """Return a playable URL and cache the file in the background."""
-    parsed = urlparse(url)
-    if parsed.scheme in {"file", ""}:
-        return url
-
-    CACHE_DIR.mkdir(exist_ok=True)
-    ext = pathlib.Path(parsed.path).suffix or ".bin"
-    name = hashlib.sha1(url.encode()).hexdigest() + ext
-    path = CACHE_DIR / name
-    if path.exists():
-        return str(path)
-
-    def _download() -> None:
-        try:
-            with httpx.Client(timeout=None) as cli:
-                with cli.stream("GET", url) as r:
-                    r.raise_for_status()
-                    total = int(r.headers.get("Content-Length") or 0)
-                    downloaded = 0
-                    with open(path, "wb") as f:
-                        for chunk in r.iter_bytes(65536):
-                            if not chunk:
-                                continue
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if progress_cb:
-                                progress_cb(downloaded, total, None)
-            if progress_cb:
-                progress_cb(total, total, None)
-        except Exception as e:  # noqa: BLE001
-            if progress_cb:
-                progress_cb(0, 0, e)
-            try:
-                path.unlink()
-            except Exception:
-                pass
-
-    threading.Thread(target=_download, daemon=True).start()
-    return url
 
 
 def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
@@ -211,39 +167,45 @@ def run(
         frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
-    progress_label.pack(side="bottom", fill="x")
-    progress_label.pack_forget()
-
+    progress_label.place(relx=0.5, rely=0.5, anchor="center")
+    progress_label.lift()
+    url = fix_media_url(url)
     instance = vlc.Instance()
     player = instance.media_player_new()
     _player = player
-    def on_progress(done: int, total: int, err: Optional[Exception]) -> None:
+
+    def on_progress(done: int, total: int, speed: float, elapsed: float) -> None:
         def _update() -> None:
-            if err is not None:
-                progress_label.pack_forget()
-                return
-            if total > 0:
-                pct = int(done * 100 / total)
-                progress_var.set(f"Downloading... {pct}%")
-            else:
-                progress_var.set(f"Downloading... {done} bytes")
-            if done >= total and total > 0:
-                progress_label.pack_forget()
-            else:
-                progress_label.pack(side="bottom", fill="x")
+            pct = int(done * 100 / total) if total > 0 else 0
+            text = f"다운로드중 {speed/1024:.1f} KB/s {elapsed:.1f}s {pct}%"
+            progress_var.set(text)
 
         root.after(0, _update)
 
-    media_url = cache_media(url, on_progress)
-    media = instance.media_new(media_url)
-    player.set_media(media)
+    media_path: dict = {}
 
-    root.update_idletasks()
-    handle = frame.winfo_id()
-    _attach_handle(player, handle)
+    def start_playback() -> None:
+        path = media_path.get("path")
+        if not path:
+            root.destroy()
+            return
+        progress_label.place_forget()
+        media = instance.media_new(path)
+        player.set_media(media)
+        root.update_idletasks()
+        handle = frame.winfo_id()
+        _attach_handle(player, handle)
+        player.play()
+        _apply_gui_images()
 
-    player.play()
-    _apply_gui_images()
+    def download_thread() -> None:
+        try:
+            media_path["path"] = download_media(url, on_progress)
+        finally:
+            root.after(0, start_playback)
+
+    threading.Thread(target=download_thread, daemon=True).start()
+
     root.protocol("WM_DELETE_WINDOW", lambda: stop())
     root.mainloop()
 
