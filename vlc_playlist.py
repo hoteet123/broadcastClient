@@ -41,6 +41,7 @@ _idx: int = 0
 _last_mtime: float = 0.0
 _gui_images: List[Dict[str, any]] = []
 _gui_labels: List[Dict[str, any]] = []
+_gui_windows: List[tk.Toplevel] = []
 
 
 def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) -> tuple[List, List]:
@@ -78,12 +79,20 @@ def _clear_gui_images() -> None:
         except Exception:
             pass
     _gui_labels.clear()
+    for win in _gui_windows:
+        try:
+            win.destroy()
+        except Exception:
+            pass
+    _gui_windows.clear()
 
 
 def _apply_gui_images() -> None:
     if _root is None or not _root.winfo_exists():
         return
     _clear_gui_images()
+    base_x = _root.winfo_rootx()
+    base_y = _root.winfo_rooty()
     for info in _gui_images:
         url = str(info.get("ImageUrl") or info.get("url") or "")
         if url:
@@ -99,22 +108,31 @@ def _apply_gui_images() -> None:
             continue
         if not frames:
             continue
-        label = tk.Label(_root, image=frames[0], bd=0, highlightthickness=0)
         try:
             x = int(float(info.get("X", 0)))
             y = int(float(info.get("Y", 0)))
         except Exception:
             x = y = 0
-        opts = {"x": x, "y": y}
-        if w and h:
-            try:
-                opts["width"] = int(float(w))
-                opts["height"] = int(float(h))
-            except Exception:
-                pass
-        label.place(**opts)
+        width = int(float(w)) if w else frames[0].width()
+        height = int(float(h)) if h else frames[0].height()
+
+        top = tk.Toplevel(_root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        trans = "#010203"
+        try:
+            top.attributes("-transparentcolor", trans)
+        except Exception:
+            pass
+        top.configure(bg=trans)
+        top.geometry(f"{width}x{height}+{base_x + x}+{base_y + y}")
+
+        label = tk.Label(top, image=frames[0], bd=0, highlightthickness=0, bg=trans)
+        label.pack(fill=tk.BOTH, expand=True)
+
         entry = {"label": label, "frames": frames, "delays": delays}
         _gui_labels.append(entry)
+        _gui_windows.append(top)
 
         if len(frames) > 1:
             def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
