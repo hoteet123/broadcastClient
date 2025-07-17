@@ -285,7 +285,8 @@ def run(
     progress_label.place(relx=0.5, rely=0.5, anchor="center")
     progress_label.place_forget()
 
-    instance = vlc.Instance()
+    # Disable direct Xlib usage to avoid threading issues on some platforms
+    instance = vlc.Instance("--no-xlib")
     player = instance.media_player_new()
     _player = player
     root.update_idletasks()
