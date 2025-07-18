@@ -61,6 +61,7 @@ def load_config():
             "HOST": "http://example.com:65000",
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
+            "MAC_ADDRESS": get_mac_address(),
         }
         CFG_PATH.write_text(json.dumps(sample, indent=2), encoding="utf-8")
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
@@ -78,7 +79,12 @@ cfg = load_config()
 HOST = cfg["HOST"].rstrip("/")
 API_KEY = cfg["API_KEY"]
 DEVICE_ID = cfg["DEVICE_ID"]
-MAC_ADDRESS = get_mac_address()
+if cfg.get("MAC_ADDRESS"):
+    MAC_ADDRESS = str(cfg["MAC_ADDRESS"])
+else:
+    MAC_ADDRESS = get_mac_address()
+    cfg["MAC_ADDRESS"] = MAC_ADDRESS
+    save_config(cfg)
 
 
 class WSClient:

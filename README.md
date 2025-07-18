@@ -29,9 +29,10 @@ Edit `client.cfg` with your `HOST`, `API_KEY` and `DEVICE_ID`, then run:
 python gui_client.py
 ```
 
-The client automatically detects the machine's MAC address and includes it when
-connecting to the WebSocket server so each instance can be uniquely
-identified.
+The client stores the machine's MAC address in `client.cfg`. On the first run
+the address is detected and saved under `MAC_ADDRESS`. This value is reused on
+subsequent runs so each instance can be consistently identified even if the
+hardware's MAC address changes across reboots.
 
 or just the scheduler:
 
