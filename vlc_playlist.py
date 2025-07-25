@@ -18,6 +18,7 @@ import vlc
 from urllib.parse import urlparse, urlunparse
 import pathlib
 import hashlib
+import subprocess
 import httpx
 import io
 import time
@@ -94,6 +95,12 @@ def _clear_gui_elements(monitor: int) -> None:
         if win is not None:
             try:
                 win.destroy()
+            except Exception:
+                pass
+        proc = entry.get("proc")
+        if proc is not None:
+            try:
+                proc.terminate()
             except Exception:
                 pass
     _gui_entries[monitor] = []
@@ -190,17 +197,46 @@ def _apply_gui_images(monitor: int) -> None:
             player.play()
             entry.update({"player": player})
         elif kind == "url":
-            try:
-                from tkinterweb import HtmlFrame
-                web = HtmlFrame(top)
-                web.load_website(url)
-                web.pack(fill=tk.BOTH, expand=True)
-                entry.update({"web": web})
-            except Exception:
-                import webbrowser
-                webbrowser.open(url)
-                top.destroy()
-                continue
+            if sys.platform.startswith("win"):
+                try:
+                    cmd = [
+                        sys.executable,
+                        str(RUN_DIR / "webview_embed.py"),
+                        url,
+                        str(width or 800),
+                        str(height or 600),
+                        str(base_x + x),
+                        str(base_y + y),
+                    ]
+                    proc = subprocess.Popen(cmd)
+                    entry.update({"proc": proc, "window": None})
+                    top.destroy()
+                    top = None
+                except Exception as e:
+                    print(f"Failed to launch webview: {e}")
+                    try:
+                        from tkinterweb import HtmlFrame
+                        web = HtmlFrame(top)
+                        web.load_website(url)
+                        web.pack(fill=tk.BOTH, expand=True)
+                        entry.update({"web": web})
+                    except Exception:
+                        import webbrowser
+                        webbrowser.open(url)
+                        top.destroy()
+                        continue
+            else:
+                try:
+                    from tkinterweb import HtmlFrame
+                    web = HtmlFrame(top)
+                    web.load_website(url)
+                    web.pack(fill=tk.BOTH, expand=True)
+                    entry.update({"web": web})
+                except Exception:
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
         else:
             top.destroy()
             continue
