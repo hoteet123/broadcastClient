@@ -7,6 +7,7 @@ import uuid
 import ast
 import pathlib
 import os
+import subprocess
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
@@ -99,14 +100,20 @@ class WSClient:
         self.device_id = DEVICE_ID
         self.device_enabled = True
         self.vlc_thread = None
-        self.playlist_thread = None
-        self.playlist_path = None
         self.playmode = 0
         self.vlc_x = None
         self.vlc_y = None
         self.vlc_width = None
         self.vlc_height = None
         self.gui_images = []
+        self.monitor_cfgs = {
+            1: {"vlc_x": None, "vlc_y": None, "vlc_width": None, "vlc_height": None},
+            2: {"vlc_x": None, "vlc_y": None, "vlc_width": None, "vlc_height": None},
+        }
+        self.playlist_processes = {}
+        self.playlist_paths = {}
+        self.gui_image_paths = {}
+        self.playlist_items_by_monitor = {1: [], 2: []}
 
     def start(self):
         self.thread.start()
@@ -138,44 +145,72 @@ class WSClient:
         self.vlc_thread.start()
         vlc_embed.set_gui_images(self.gui_images)
 
-    def start_vlc_playlist(self, items: list, start_index: int = 0) -> None:
-        """Launch or update VLC playlist without closing the window."""
 
+    def start_playlist_for_monitor(self, monitor: int, items: list, start_index: int = 0) -> None:
+        """Start or update playlist playback for the given monitor using a subprocess."""
         if not items:
-            self.stop_vlc()
+            self.stop_playlist_for_monitor(monitor)
             return
 
         data = {"items": items, "start_index": int(start_index)}
-        if self.playlist_thread and self.playlist_thread.is_alive() and self.playlist_path:
+        path = self.playlist_paths.get(monitor)
+        if path and self.playlist_processes.get(monitor) and self.playlist_processes[monitor].poll() is None:
             try:
-                with open(self.playlist_path, "w", encoding="utf-8") as f:
+                with open(path, "w", encoding="utf-8") as f:
                     json.dump(data, f)
                 return
             except Exception:
                 pass
 
-        # Starting a new playlist, ensure any previous VLC playback is stopped
-        self.stop_vlc()
+        self.stop_playlist_for_monitor(monitor)
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8", dir=RUN_DIR)
         json.dump(data, tmp)
-        tmp.flush()
-        tmp.close()
-        self.playlist_path = tmp.name
-        kwargs = {
-            "x": self.vlc_x,
-            "y": self.vlc_y,
-            "width": self.vlc_width,
-            "height": self.vlc_height,
-        }
-        self.playlist_thread = threading.Thread(
-            target=vlc_playlist.run,
-            args=(self.playlist_path,),
-            kwargs=kwargs,
-            daemon=True,
-        )
-        self.playlist_thread.start()
-        vlc_playlist.set_gui_images(self.gui_images)
+        tmp.flush(); tmp.close()
+        self.playlist_paths[monitor] = tmp.name
+
+        args = [sys.executable, pathlib.Path(__file__).with_name("vlc_playlist.py"), tmp.name]
+        cfg = self.monitor_cfgs.get(monitor, {})
+        if cfg.get("vlc_x") is not None:
+            args += ["--x", str(int(cfg["vlc_x"]))]
+        if cfg.get("vlc_y") is not None:
+            args += ["--y", str(int(cfg["vlc_y"]))]
+        if cfg.get("vlc_width") is not None:
+            args += ["--width", str(int(cfg["vlc_width"]))]
+        if cfg.get("vlc_height") is not None:
+            args += ["--height", str(int(cfg["vlc_height"]))]
+
+        if self.gui_images:
+            img_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w", encoding="utf-8", dir=RUN_DIR)
+            json.dump(self.gui_images, img_tmp)
+            img_tmp.flush(); img_tmp.close()
+            args += ["--gui-images", img_tmp.name]
+            self.gui_image_paths[monitor] = img_tmp.name
+
+        proc = subprocess.Popen(args)
+        self.playlist_processes[monitor] = proc
+
+    def stop_playlist_for_monitor(self, monitor: int) -> None:
+        proc = self.playlist_processes.get(monitor)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                proc.kill()
+        self.playlist_processes.pop(monitor, None)
+        path = self.playlist_paths.pop(monitor, None)
+        if path:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+        img_path = self.gui_image_paths.pop(monitor, None)
+        if img_path:
+            try:
+                os.unlink(img_path)
+            except FileNotFoundError:
+                pass
 
 
     def stop_vlc(self) -> None:
@@ -183,18 +218,11 @@ class WSClient:
             vlc_embed.stop()
             self.vlc_thread.join(timeout=1)
             self.vlc_thread = None
-        if self.playlist_thread and self.playlist_thread.is_alive():
-            vlc_playlist.stop()
-            self.playlist_thread.join(timeout=1)
-            self.playlist_thread = None
-        if self.playlist_path:
-            try:
-                os.unlink(self.playlist_path)
-            except FileNotFoundError:
-                pass
-            self.playlist_path = None
         vlc_embed.set_gui_images([])
         vlc_playlist.set_gui_images([])
+
+        for mon in list(self.playlist_processes.keys()):
+            self.stop_playlist_for_monitor(mon)
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -311,10 +339,40 @@ class WSClient:
                         self.device_id = str(dev_id)
                         cfg["DEVICE_ID"] = str(dev_id)
                         save_config(cfg)
+                    mon1 = data.get("Monitor1") or {}
+                    mon2 = data.get("Monitor2") or {}
+
+                    # Backwards compatibility
                     res = data.get("Resolution") or data.get("resolution")
                     orient = data.get("Orientation")
                     if res or orient is not None:
-                        display_config.set_display_config(res, orient)
+                        display_config.set_display_config(res, orient, monitor=1)
+                    if isinstance(mon1, dict):
+                        r1 = mon1.get("Resolution")
+                        o1 = mon1.get("Orientation")
+                        if r1 or o1 is not None:
+                            display_config.set_display_config(r1, o1, monitor=1)
+                        for key, attr in [
+                            ("VlcX", "vlc_x"),
+                            ("VlcY", "vlc_y"),
+                            ("VlcWidth", "vlc_width"),
+                            ("VlcHeight", "vlc_height"),
+                        ]:
+                            if mon1.get(key) is not None:
+                                self.monitor_cfgs[1][attr] = int(float(mon1.get(key)))
+                    if isinstance(mon2, dict):
+                        r2 = mon2.get("Resolution")
+                        o2 = mon2.get("Orientation")
+                        if r2 or o2 is not None:
+                            display_config.set_display_config(r2, o2, monitor=2)
+                        for key, attr in [
+                            ("VlcX", "vlc_x"),
+                            ("VlcY", "vlc_y"),
+                            ("VlcWidth", "vlc_width"),
+                            ("VlcHeight", "vlc_height"),
+                        ]:
+                            if mon2.get(key) is not None:
+                                self.monitor_cfgs[2][attr] = int(float(mon2.get(key)))
                     images = data.get("GuiImages")
                     if isinstance(images, list):
                         self.gui_images = list(images)
@@ -360,55 +418,33 @@ class WSClient:
                         asyncio.create_task(self.play_audio_url(url, volume))
                 elif isinstance(data, dict) and data.get("type") == "play-media":
                     mid = data.get("media_id")
-                    if mid is not None and self.playlist_items:
-                        try:
-                            mid_str = str(mid)
-                            idx = next(
-                                i for i, it in enumerate(self.playlist_items)
-                                if str(it.get("MediaID") or it.get("media_id") or it.get("id")) == mid_str
-                            )
-                            self.start_vlc_playlist(self.playlist_items, start_index=idx)
-                        except StopIteration:
-                            pass
+                    if mid is not None:
+                        mid_str = str(mid)
+                        for mon, items in self.playlist_items_by_monitor.items():
+                            try:
+                                idx = next(
+                                    i for i, it in enumerate(items)
+                                    if str(it.get("MediaID") or it.get("media_id") or it.get("id")) == mid_str
+                                )
+                                self.start_playlist_for_monitor(mon, items, start_index=idx)
+                                break
+                            except StopIteration:
+                                continue
                 elif isinstance(data, dict) and data.get("type") == "playlist":
                     items = data.get("items")
                     if isinstance(items, list):
                         new_items = list(items)
-
-                        def item_id(it: dict) -> str:
-                            return str(
-                                it.get("MediaID")
-                                or it.get("media_id")
-                                or it.get("id")
-                                or it.get("MediaUrl")
-                                or it.get("url")
-                            )
-
-                        def item_vol(it: dict) -> str:
-                            if "Volume" in it:
-                                return str(it.get("Volume"))
-                            if "volume" in it:
-                                return str(it.get("volume"))
-                            return ""
-
-                        old = self.playlist_items
-
-                        same_order = (
-                            len(old) == len(new_items)
-                            and all(item_id(o) == item_id(n) for o, n in zip(old, new_items))
-                        )
-                        same_volume = (
-                            same_order
-                            and all(item_vol(o) == item_vol(n) for o, n in zip(old, new_items))
-                        )
-
-                        if same_order and same_volume:
-                            # No changes
-                            continue
-
-                        # Update playlist and restart VLC
                         self.playlist_items = new_items
-                        self.start_vlc_playlist(self.playlist_items)
+                        by_mon = {1: [], 2: []}
+                        for it in new_items:
+                            mon = int(it.get("Monitor", 1))
+                            if mon == 2:
+                                by_mon[2].append(it)
+                            else:
+                                by_mon[1].append(it)
+                        self.playlist_items_by_monitor = by_mon
+                        self.start_playlist_for_monitor(1, by_mon[1])
+                        self.start_playlist_for_monitor(2, by_mon[2])
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
                     await self.update_schedules(start_scheduler=self.playmode != 2)
                 else:

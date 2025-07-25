@@ -240,6 +240,7 @@ def run(
     y: Optional[int] = None,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    gui_images: Optional[List[Dict[str, any]]] = None,
 ) -> None:
     """Play playlist defined in ``path`` and reload when it changes.
 
@@ -291,6 +292,7 @@ def run(
     _player = player
     root.update_idletasks()
     _attach_handle(player, frame.winfo_id())
+    set_gui_images(gui_images or [])
     _apply_gui_images()
 
     items, idx = load()
@@ -449,8 +451,30 @@ def play_playlist(path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: vlc_playlist.py playlist.json")
-        sys.exit(1)
+    import argparse
 
-    run(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Play a VLC playlist")
+    parser.add_argument("playlist", help="playlist JSON file")
+    parser.add_argument("--x", type=int, default=None)
+    parser.add_argument("--y", type=int, default=None)
+    parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--height", type=int, default=None)
+    parser.add_argument("--gui-images", dest="gui_images", default=None)
+    args = parser.parse_args()
+
+    images = None
+    if args.gui_images:
+        try:
+            with open(args.gui_images, "r", encoding="utf-8") as f:
+                images = json.load(f)
+        except Exception:
+            images = None
+
+    run(
+        args.playlist,
+        x=args.x,
+        y=args.y,
+        width=args.width,
+        height=args.height,
+        gui_images=images,
+    )
