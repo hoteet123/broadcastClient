@@ -93,7 +93,8 @@ def _clear_gui_elements(monitor: int) -> None:
         win = entry.get("window")
         if win is not None:
             try:
-                win.destroy()
+                if win.winfo_exists():
+                    win.destroy()
             except Exception:
                 pass
         proc = entry.get("process")
@@ -248,7 +249,8 @@ def _apply_gui_images(monitor: int) -> None:
             top.destroy()
             continue
 
-        top.lift()
+        if top.winfo_exists():
+            top.lift()
         _gui_entries.setdefault(monitor, []).append(entry)
 
 
