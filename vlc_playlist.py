@@ -18,6 +18,9 @@ import vlc
 from urllib.parse import urlparse, urlunparse
 import pathlib
 import hashlib
+import shutil
+import subprocess
+import tempfile
 import httpx
 import io
 import time
@@ -29,6 +32,37 @@ DEFAULT_IMAGE_DURATION = 5
 # Directory used to store cached media files next to the running executable/script
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 CACHE_DIR = RUN_DIR / "cache"
+
+
+def _find_chrome() -> Optional[str]:
+    """Return path to a Chrome/Chromium executable if available."""
+    for name in (
+        "google-chrome",
+        "chrome",
+        "chromium-browser",
+        "chromium",
+    ):
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def _create_chrome_wrapper(url: str) -> str:
+    """Return path to a temporary HTML file embedding ``url`` in an iframe."""
+    html = f"""
+    <html><head><style>
+    html,body{{margin:0;padding:0;overflow:hidden;}}
+    iframe{{border:none;width:100vw;height:100vh;overflow:hidden;}}
+    ::-webkit-scrollbar{{display:none;}}
+    </style></head>
+    <body><iframe src='{url}' frameborder='0'></iframe></body></html>
+    """
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".html", dir=RUN_DIR, mode="w", encoding="utf-8")
+    tmp.write(html)
+    tmp.flush()
+    tmp.close()
+    return tmp.name
 
 
 _roots: Dict[int, tk.Tk] = {}
@@ -94,6 +128,18 @@ def _clear_gui_elements(monitor: int) -> None:
         if win is not None:
             try:
                 win.destroy()
+            except Exception:
+                pass
+        proc = entry.get("process")
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        html = entry.get("html")
+        if html:
+            try:
+                os.unlink(html)
             except Exception:
                 pass
     _gui_entries[monitor] = []
@@ -190,17 +236,49 @@ def _apply_gui_images(monitor: int) -> None:
             player.play()
             entry.update({"player": player})
         elif kind == "url":
-            try:
-                from tkinterweb import HtmlFrame
-                web = HtmlFrame(top)
-                web.load_website(url)
-                web.pack(fill=tk.BOTH, expand=True)
-                entry.update({"web": web})
-            except Exception:
-                import webbrowser
-                webbrowser.open(url)
-                top.destroy()
-                continue
+            chrome = _find_chrome()
+            if chrome:
+                html_path = _create_chrome_wrapper(url)
+                size_arg = ""
+                pos_arg = ""
+                if width and height:
+                    size_arg = f"--window-size={int(width)},{int(height)}"
+                    pos_arg = f"--window-position={base_x + x},{base_y + y}"
+                else:
+                    sw = root.winfo_screenwidth()
+                    sh = root.winfo_screenheight()
+                    size_arg = f"--window-size={sw},{sh}"
+                    pos_arg = f"--window-position={base_x + x},{base_y + y}"
+                try:
+                    proc = subprocess.Popen([
+                        chrome,
+                        f"--app=file://{html_path}",
+                        size_arg,
+                        pos_arg,
+                    ])
+                    entry.update({"process": proc, "html": html_path})
+                    top.destroy()
+                except Exception:
+                    try:
+                        os.unlink(html_path)
+                    except Exception:
+                        pass
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
+            else:
+                try:
+                    from tkinterweb import HtmlFrame
+                    web = HtmlFrame(top)
+                    web.load_website(url)
+                    web.pack(fill=tk.BOTH, expand=True)
+                    entry.update({"web": web})
+                except Exception:
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
         else:
             top.destroy()
             continue
