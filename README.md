@@ -7,7 +7,7 @@ A simple GUI/WebSocket client to fetch broadcast schedules and play TTS audio.
 Install dependencies (requires Python 3.8+):
 
 ```bash
-pip install websockets "httpx[http2]" pillow pystray python-vlc
+pip install websockets "httpx[http2]" pillow pystray python-vlc pywebview
 ```
 
 `httpx` is used with HTTP/2 enabled. If the optional `h2` package is not installed
@@ -58,6 +58,10 @@ the VLC window.  Each entry should contain `ImageUrl`, `X`, `Y`, `Width`,
 web view is shown on the specified monitor.  `GuiOrder` starts at `0` and lower
 numbers are placed above higher values, allowing precise control of the
 stacking order.  GIF images animate and transparency is respected.
+
+On Windows systems, URL overlays launch a separate window using
+`pywebview` with the Edge WebView2 engine for significantly improved
+rendering performance compared to the previous Tkinter-based web view.
 
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
