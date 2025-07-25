@@ -248,6 +248,7 @@ def _apply_gui_images(monitor: int) -> None:
             top.destroy()
             continue
 
+        top.lift()
         _gui_entries.setdefault(monitor, []).append(entry)
 
 
