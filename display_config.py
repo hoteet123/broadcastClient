@@ -4,8 +4,13 @@ import ctypes
 from typing import Optional, Union
 
 
-def set_display_config(resolution: Optional[str] = None, orientation: Optional[Union[int, str]] = None) -> None:
-    """Set display resolution and orientation if possible."""
+def set_display_config(
+    resolution: Optional[str] = None,
+    orientation: Optional[Union[int, str]] = None,
+    *,
+    monitor: int = 1,
+) -> None:
+    """Set display resolution and orientation for the given ``monitor`` if possible."""
     width: Optional[int] = None
     height: Optional[int] = None
     if resolution:
@@ -22,33 +27,33 @@ def set_display_config(resolution: Optional[str] = None, orientation: Optional[U
             orientation = None
     if sys.platform.startswith('win'):
         try:
-            _set_windows_display(width, height, orientation)
+            _set_windows_display(width, height, orientation, monitor)
         except Exception as e:
             print(f"Failed to set Windows display: {e}")
     else:
         try:
-            _set_xrandr_display(width, height, orientation)
+            _set_xrandr_display(width, height, orientation, monitor)
         except Exception as e:
             print(f"Failed to set xrandr display: {e}")
 
 
-def _set_xrandr_display(width: Optional[int], height: Optional[int], orientation: Optional[int]) -> None:
+def _set_xrandr_display(
+    width: Optional[int],
+    height: Optional[int],
+    orientation: Optional[int],
+    monitor: int,
+) -> None:
     output = subprocess.run(['xrandr'], capture_output=True, text=True)
     if output.returncode != 0:
         return
-    primary = None
+    outputs = []
     for line in output.stdout.splitlines():
-        if ' connected primary' in line:
-            primary = line.split()[0]
-            break
-    if not primary:
-        for line in output.stdout.splitlines():
-            if ' connected' in line:
-                primary = line.split()[0]
-                break
-    if not primary:
+        if ' connected' in line:
+            outputs.append(line.split()[0])
+    if not outputs or monitor < 1 or monitor > len(outputs):
         return
-    cmd = ['xrandr', '--output', primary]
+    name = outputs[monitor - 1]
+    cmd = ['xrandr', '--output', name]
     if width and height:
         cmd += ['--mode', f'{width}x{height}']
     if orientation is not None:
@@ -116,11 +121,17 @@ if sys.platform.startswith('win'):
         270: 3,
     }
 
-    def _set_windows_display(width: Optional[int], height: Optional[int], orientation: Optional[int]) -> None:
+    def _set_windows_display(
+        width: Optional[int],
+        height: Optional[int],
+        orientation: Optional[int],
+        monitor: int,
+    ) -> None:
         user32 = ctypes.windll.user32
         dm = DEVMODE()
         dm.dmSize = ctypes.sizeof(DEVMODE)
-        if user32.EnumDisplaySettingsW(None, ENUM_CURRENT_SETTINGS, ctypes.byref(dm)) == 0:
+        dev_name = f"\\\\.\\DISPLAY{monitor}"
+        if user32.EnumDisplaySettingsW(dev_name, ENUM_CURRENT_SETTINGS, ctypes.byref(dm)) == 0:
             return
         changed = False
         if orientation is not None:
@@ -147,7 +158,12 @@ if sys.platform.startswith('win'):
                 dm.dmFields |= DM_PELSWIDTH | DM_PELSHEIGHT
                 changed = True
         if changed:
-            user32.ChangeDisplaySettingsW(ctypes.byref(dm), CDS_UPDATEREGISTRY)
+            user32.ChangeDisplaySettingsExW(dev_name, ctypes.byref(dm), None, CDS_UPDATEREGISTRY, None)
 else:
-    def _set_windows_display(width: Optional[int], height: Optional[int], orientation: Optional[int]) -> None:
+    def _set_windows_display(
+        width: Optional[int],
+        height: Optional[int],
+        orientation: Optional[int],
+        monitor: int,
+    ) -> None:
         pass

@@ -31,20 +31,25 @@ RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 CACHE_DIR = RUN_DIR / "cache"
 
 
-_root: Optional[tk.Tk] = None
-_player: Optional[vlc.MediaPlayer] = None
-_after_id: Optional[str] = None
-_check_id: Optional[str] = None
-_playlist_path: Optional[str] = None
-_items: Optional[list] = None
-_idx: int = 0
-_last_mtime: float = 0.0
-_gui_images: List[Dict[str, any]] = []
-_gui_labels: List[Dict[str, any]] = []
-_gui_windows: List[tk.Toplevel] = []
+_roots: Dict[int, tk.Tk] = {}
+_players: Dict[int, vlc.MediaPlayer] = {}
+_after_ids: Dict[int, str] = {}
+_check_ids: Dict[int, str] = {}
+_playlist_paths: Dict[int, str] = {}
+_items_map: Dict[int, list] = {}
+_idx_map: Dict[int, int] = {}
+_last_mtimes: Dict[int, float] = {}
+_gui_images: Dict[int, List[Dict[str, any]]] = {}
+_gui_labels: Dict[int, List[Dict[str, any]]] = {}
+_gui_windows: Dict[int, List[tk.Toplevel]] = {}
 
 
-def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) -> tuple[List, List]:
+def _load_image_frames(
+    url: str,
+    width: Optional[int],
+    height: Optional[int],
+    root: tk.Tk,
+) -> tuple[List, List]:
     try:
         if urlparse(url).scheme in {"http", "https"}:
             r = httpx.get(url, timeout=30)
@@ -62,38 +67,39 @@ def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) ->
         if width and height:
             frame = frame.resize((int(width), int(height)), Image.LANCZOS)
         frame = frame.convert("RGBA")
-        frames.append(ImageTk.PhotoImage(frame, master=_root))
+        frames.append(ImageTk.PhotoImage(frame, master=root))
         delays.append(int(frame.info.get("duration", 100)))
     if not frames:
         if width and height:
             img = img.resize((int(width), int(height)), Image.LANCZOS)
-        frames.append(ImageTk.PhotoImage(img.convert("RGBA"), master=_root))
+        frames.append(ImageTk.PhotoImage(img.convert("RGBA"), master=root))
         delays.append(int(img.info.get("duration", 100)))
     return frames, delays
 
 
-def _clear_gui_images() -> None:
-    for item in _gui_labels:
+def _clear_gui_images(monitor: int) -> None:
+    for item in _gui_labels.get(monitor, []):
         try:
             item["label"].destroy()
         except Exception:
             pass
-    _gui_labels.clear()
-    for win in _gui_windows:
+    _gui_labels[monitor] = []
+    for win in _gui_windows.get(monitor, []):
         try:
             win.destroy()
         except Exception:
             pass
-    _gui_windows.clear()
+    _gui_windows[monitor] = []
 
 
-def _apply_gui_images() -> None:
-    if _root is None or not _root.winfo_exists():
+def _apply_gui_images(monitor: int) -> None:
+    root = _roots.get(monitor)
+    if root is None or not root.winfo_exists():
         return
-    _clear_gui_images()
-    base_x = _root.winfo_rootx()
-    base_y = _root.winfo_rooty()
-    for info in _gui_images:
+    _clear_gui_images(monitor)
+    base_x = root.winfo_rootx()
+    base_y = root.winfo_rooty()
+    for info in _gui_images.get(monitor, []):
         url = str(info.get("ImageUrl") or info.get("url") or "")
         if url:
             url = fix_media_url(url)
@@ -102,7 +108,12 @@ def _apply_gui_images() -> None:
         w = info.get("Width")
         h = info.get("Height")
         try:
-            frames, delays = _load_image_frames(url, int(float(w)) if w else None, int(float(h)) if h else None)
+            frames, delays = _load_image_frames(
+                url,
+                int(float(w)) if w else None,
+                int(float(h)) if h else None,
+                root,
+            )
         except Exception as e:  # noqa: BLE001
             print(f"Failed to load GUI image {url}: {e}")
             continue
@@ -116,7 +127,7 @@ def _apply_gui_images() -> None:
         width = int(float(w)) if w else frames[0].width()
         height = int(float(h)) if h else frames[0].height()
 
-        top = tk.Toplevel(_root)
+        top = tk.Toplevel(root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
         trans = "#010203"
@@ -131,8 +142,8 @@ def _apply_gui_images() -> None:
         label.pack(fill=tk.BOTH, expand=True)
 
         entry = {"label": label, "frames": frames, "delays": delays}
-        _gui_labels.append(entry)
-        _gui_windows.append(top)
+        _gui_labels.setdefault(monitor, []).append(entry)
+        _gui_windows.setdefault(monitor, []).append(top)
 
         if len(frames) > 1:
             def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
@@ -144,11 +155,11 @@ def _apply_gui_images() -> None:
             label.after(delays[0], animate, 1, label, frames, delays)
 
 
-def set_gui_images(images: List[Dict[str, any]]) -> None:
-    global _gui_images
-    _gui_images = list(images) if images else []
-    if _root is not None:
-        _root.after(0, _apply_gui_images)
+def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
+    _gui_images[monitor] = list(images) if images else []
+    root = _roots.get(monitor)
+    if root is not None:
+        root.after(0, _apply_gui_images, monitor)
 
 
 def cache_media(url: str, progress_cb=None) -> str:
@@ -240,6 +251,7 @@ def run(
     y: Optional[int] = None,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    monitor: int = 1,
 ) -> None:
     """Play playlist defined in ``path`` and reload when it changes.
 
@@ -265,12 +277,12 @@ def run(
             print(f"Failed to load playlist: {e}")
             return [], 0
 
-    global _root, _player, _after_id, _check_id, _playlist_path, _items, _idx, _last_mtime
+    global _roots, _players, _after_ids, _check_ids, _playlist_paths, _items_map, _idx_map, _last_mtimes
 
-    _playlist_path = path
+    _playlist_paths[monitor] = path
 
     root = tk.Tk()
-    _root = root
+    _roots[monitor] = root
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
@@ -288,17 +300,17 @@ def run(
     # Disable direct Xlib usage to avoid threading issues on some platforms
     instance = vlc.Instance("--no-xlib")
     player = instance.media_player_new()
-    _player = player
+    _players[monitor] = player
     root.update_idletasks()
     _attach_handle(player, frame.winfo_id())
-    _apply_gui_images()
+    _apply_gui_images(monitor)
 
     items, idx = load()
-    _items = items
+    _items_map[monitor] = items
     idx = max(0, int(idx))
-    _idx = idx
+    _idx_map[monitor] = idx
     last_mtime = os.path.getmtime(path) if os.path.exists(path) else 0.0
-    _last_mtime = last_mtime
+    _last_mtimes[monitor] = last_mtime
     after_id = None
 
     def play_next() -> None:
@@ -312,7 +324,7 @@ def run(
             idx = 0
         item = items[idx]
         idx += 1
-        _idx = idx
+        _idx_map[monitor] = idx
 
         url = item.get("MediaUrl") or item.get("url")
         if url:
@@ -375,7 +387,7 @@ def run(
         if is_image(item):
             dur = int(item.get("DurationSeconds") or DEFAULT_IMAGE_DURATION)
             after_id = root.after(dur * 1000, play_next)
-            _after_id = after_id
+            _after_ids[monitor] = after_id
         else:
             def on_end(event):
                 player.event_manager().event_detach(vlc.EventType.MediaPlayerEndReached)
@@ -390,62 +402,65 @@ def run(
         try:
             mtime = os.path.getmtime(path)
         except FileNotFoundError:
-            _check_id = root.after(1000, check_update)
+            _check_ids[monitor] = root.after(1000, check_update)
             return
         if mtime != last_mtime:
             last_mtime = mtime
             new_items, new_idx = load()
             if new_items:
                 items = new_items
-                _items = items
+                _items_map[monitor] = items
                 idx = max(0, int(new_idx))
-                _idx = idx
+                _idx_map[monitor] = idx
                 player.stop()
                 play_next()
-        _check_id = root.after(1000, check_update)
+        _check_ids[monitor] = root.after(1000, check_update)
 
     play_next()
-    _check_id = root.after(1000, check_update)
+    _check_ids[monitor] = root.after(1000, check_update)
 
-    root.protocol("WM_DELETE_WINDOW", lambda: stop())
+    root.protocol("WM_DELETE_WINDOW", lambda: stop(monitor))
     root.mainloop()
 
 
-def stop() -> None:
-    """Stop playback and close the window if running."""
-    global _root, _player, _after_id, _check_id, _gui_images
-    if _root is None:
+def stop(monitor: int = 1) -> None:
+    """Stop playback and close the window for ``monitor`` if running."""
+    root = _roots.get(monitor)
+    if root is None:
         return
-    if _after_id is not None:
+    after_id = _after_ids.get(monitor)
+    if after_id is not None:
         try:
-            _root.after_cancel(_after_id)
+            root.after_cancel(after_id)
         except Exception:
             pass
-        _after_id = None
-    if _check_id is not None:
+        _after_ids.pop(monitor, None)
+    check_id = _check_ids.get(monitor)
+    if check_id is not None:
         try:
-            _root.after_cancel(_check_id)
+            root.after_cancel(check_id)
         except Exception:
             pass
-        _check_id = None
-    if _player is not None:
+        _check_ids.pop(monitor, None)
+    player = _players.get(monitor)
+    if player is not None:
         try:
-            _player.stop()
+            player.stop()
         except Exception:
             pass
-        _player = None
+        _players.pop(monitor, None)
     try:
-        _root.after(0, _root.destroy)
+        root.after(0, root.destroy)
     except Exception:
         pass
-    _root = None
-    _clear_gui_images()
-    _gui_images = []
+    _roots.pop(monitor, None)
+    _clear_gui_images(monitor)
+    _gui_images.pop(monitor, None)
 
 
-def play_playlist(path: str) -> None:
+def play_playlist(path: str, monitor: int = 1) -> None:
     """Backward compatible wrapper for ``run``."""
-    run(path)
+    run(path, monitor=monitor)
 
 
 if __name__ == "__main__":

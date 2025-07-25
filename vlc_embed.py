@@ -88,11 +88,11 @@ def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
         player.set_xwindow(handle)
 
 
-_root: Optional[tk.Tk] = None
-_player: Optional[vlc.MediaPlayer] = None
-_gui_images: List[Dict[str, any]] = []
-_gui_labels: List[Dict[str, any]] = []
-_gui_windows: List[tk.Toplevel] = []
+_roots: Dict[int, tk.Tk] = {}
+_players: Dict[int, vlc.MediaPlayer] = {}
+_gui_images: Dict[int, List[Dict[str, any]]] = {}
+_gui_labels: Dict[int, List[Dict[str, any]]] = {}
+_gui_windows: Dict[int, List[tk.Toplevel]] = {}
 
 
 def fix_media_url(url: str) -> str:
@@ -105,7 +105,12 @@ def fix_media_url(url: str) -> str:
     return url
 
 
-def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) -> tuple[List, List]:
+def _load_image_frames(
+    url: str,
+    width: Optional[int],
+    height: Optional[int],
+    root: tk.Tk,
+) -> tuple[List, List]:
     """Return a list of PhotoImage frames and their durations."""
     try:
         if urlparse(url).scheme in {"http", "https"}:
@@ -124,38 +129,39 @@ def _load_image_frames(url: str, width: Optional[int], height: Optional[int]) ->
         if width and height:
             frame = frame.resize((int(width), int(height)), Image.LANCZOS)
         frame = frame.convert("RGBA")
-        frames.append(ImageTk.PhotoImage(frame, master=_root))
+        frames.append(ImageTk.PhotoImage(frame, master=root))
         delays.append(int(frame.info.get("duration", 100)))
     if not frames:
         if width and height:
             img = img.resize((int(width), int(height)), Image.LANCZOS)
-        frames.append(ImageTk.PhotoImage(img.convert("RGBA"), master=_root))
+        frames.append(ImageTk.PhotoImage(img.convert("RGBA"), master=root))
         delays.append(int(img.info.get("duration", 100)))
     return frames, delays
 
 
-def _clear_gui_images() -> None:
-    for item in _gui_labels:
+def _clear_gui_images(monitor: int) -> None:
+    for item in _gui_labels.get(monitor, []):
         try:
             item["label"].destroy()
         except Exception:
             pass
-    _gui_labels.clear()
-    for win in _gui_windows:
+    _gui_labels[monitor] = []
+    for win in _gui_windows.get(monitor, []):
         try:
             win.destroy()
         except Exception:
             pass
-    _gui_windows.clear()
+    _gui_windows[monitor] = []
 
 
-def _apply_gui_images() -> None:
-    if _root is None or not _root.winfo_exists():
+def _apply_gui_images(monitor: int) -> None:
+    root = _roots.get(monitor)
+    if root is None or not root.winfo_exists():
         return
-    _clear_gui_images()
-    base_x = _root.winfo_rootx()
-    base_y = _root.winfo_rooty()
-    for info in _gui_images:
+    _clear_gui_images(monitor)
+    base_x = root.winfo_rootx()
+    base_y = root.winfo_rooty()
+    for info in _gui_images.get(monitor, []):
         url = str(info.get("ImageUrl") or info.get("url") or "")
         if url:
             url = fix_media_url(url)
@@ -164,7 +170,12 @@ def _apply_gui_images() -> None:
         w = info.get("Width")
         h = info.get("Height")
         try:
-            frames, delays = _load_image_frames(url, int(float(w)) if w else None, int(float(h)) if h else None)
+            frames, delays = _load_image_frames(
+                url,
+                int(float(w)) if w else None,
+                int(float(h)) if h else None,
+                root,
+            )
         except Exception as e:  # noqa: BLE001
             print(f"Failed to load GUI image {url}: {e}")
             continue
@@ -178,7 +189,7 @@ def _apply_gui_images() -> None:
         width = int(float(w)) if w else frames[0].width()
         height = int(float(h)) if h else frames[0].height()
 
-        top = tk.Toplevel(_root)
+        top = tk.Toplevel(root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
         trans = "#010203"
@@ -193,8 +204,8 @@ def _apply_gui_images() -> None:
         label.pack(fill=tk.BOTH, expand=True)
 
         entry = {"label": label, "frames": frames, "delays": delays}
-        _gui_labels.append(entry)
-        _gui_windows.append(top)
+        _gui_labels.setdefault(monitor, []).append(entry)
+        _gui_windows.setdefault(monitor, []).append(top)
 
         if len(frames) > 1:
             def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
@@ -206,12 +217,12 @@ def _apply_gui_images() -> None:
             label.after(delays[0], animate, 1, label, frames, delays)
 
 
-def set_gui_images(images: List[Dict[str, any]]) -> None:
-    """Update GUI overlay images."""
-    global _gui_images
-    _gui_images = list(images) if images else []
-    if _root is not None:
-        _root.after(0, _apply_gui_images)
+def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
+    """Update GUI overlay images for the given monitor."""
+    _gui_images[monitor] = list(images) if images else []
+    root = _roots.get(monitor)
+    if root is not None:
+        root.after(0, _apply_gui_images, monitor)
 
 
 def run(
@@ -221,6 +232,7 @@ def run(
     y: Optional[int] = None,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    monitor: int = 1,
 ) -> None:
     """Play ``url`` in a fullscreen window with an embedded player.
 
@@ -228,9 +240,9 @@ def run(
     fullscreen window and ``width``/``height`` control its size.  When no
     geometry is provided the player fills the entire screen.
     """
-    global _root, _player
+    global _roots, _players
     root = tk.Tk()
-    _root = root
+    _roots[monitor] = root
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
@@ -248,7 +260,7 @@ def run(
     # Disable direct Xlib usage to avoid threading issues on some platforms
     instance = vlc.Instance("--no-xlib")
     player = instance.media_player_new()
-    _player = player
+    _players[monitor] = player
     def on_progress(done: int, total: int, speed: float, elapsed: float, err: Optional[Exception]) -> None:
         if err is not None:
             progress_label.place_forget()
@@ -286,33 +298,34 @@ def run(
     _attach_handle(player, handle)
 
     player.play()
-    _apply_gui_images()
-    root.protocol("WM_DELETE_WINDOW", lambda: stop())
+    _apply_gui_images(monitor)
+    root.protocol("WM_DELETE_WINDOW", lambda: stop(monitor))
     root.mainloop()
 
 
-def stop() -> None:
-    """Stop playback and close the window if running."""
-    global _root, _player, _gui_images
-    if _player is not None:
+def stop(monitor: int = 1) -> None:
+    """Stop playback and close the window for ``monitor`` if running."""
+    player = _players.get(monitor)
+    if player is not None:
         try:
-            _player.stop()
+            player.stop()
         except Exception:
             pass
-        _player = None
-    if _root is not None:
+        _players.pop(monitor, None)
+    root = _roots.get(monitor)
+    if root is not None:
         try:
-            _root.after(0, _root.destroy)
+            root.after(0, root.destroy)
         except Exception:
             pass
-        _root = None
-    _clear_gui_images()
-    _gui_images = []
+        _roots.pop(monitor, None)
+    _clear_gui_images(monitor)
+    _gui_images.pop(monitor, None)
 
 
 # Backwards compatibility
-def play_media(url: str) -> None:
-    run(url)
+def play_media(url: str, monitor: int = 1) -> None:
+    run(url, monitor=monitor)
 
 
 if __name__ == '__main__':
