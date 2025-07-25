@@ -175,10 +175,12 @@ def _apply_gui_images(monitor: int) -> None:
     _clear_gui_elements(monitor)
     base_x = root.winfo_rootx()
     base_y = root.winfo_rooty()
-    # Create windows from lowest to highest order so ``GuiOrder`` 0 is on top
+    # Create windows from highest to lowest order so smaller ``GuiOrder`` values
+    # are placed last and therefore remain on top
     images = sorted(
         _gui_images.get(monitor, []),
         key=lambda i: int(i.get("GuiOrder", 0)),
+        reverse=True,
     )
     for info in images:
         url = str(
@@ -292,7 +294,11 @@ def _apply_gui_images(monitor: int) -> None:
             else:
                 try:
                     from tkinterweb import HtmlFrame
-                    web = HtmlFrame(top)
+                    web = HtmlFrame(
+                        top,
+                        horizontal_scrollbar=False,
+                        vertical_scrollbar=False,
+                    )
                     web.load_website(url)
                     web.pack(fill=tk.BOTH, expand=True)
                     entry.update({"web": web})
