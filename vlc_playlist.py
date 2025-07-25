@@ -18,6 +18,9 @@ import vlc
 from urllib.parse import urlparse, urlunparse
 import pathlib
 import hashlib
+import subprocess
+import tempfile
+import shutil
 import httpx
 import io
 import time
@@ -94,6 +97,18 @@ def _clear_gui_elements(monitor: int) -> None:
         if win is not None:
             try:
                 win.destroy()
+            except Exception:
+                pass
+        proc = entry.get("process")
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        html = entry.get("html")
+        if html:
+            try:
+                os.unlink(html)
             except Exception:
                 pass
     _gui_entries[monitor] = []
@@ -190,17 +205,22 @@ def _apply_gui_images(monitor: int) -> None:
             player.play()
             entry.update({"player": player})
         elif kind == "url":
-            try:
-                from tkinterweb import HtmlFrame
-                web = HtmlFrame(top)
-                web.load_website(url)
-                web.pack(fill=tk.BOTH, expand=True)
-                entry.update({"web": web})
-            except Exception:
-                import webbrowser
-                webbrowser.open(url)
+            proc, html = _launch_chrome(url, x=x + base_x, y=y + base_y, width=width, height=height)
+            if proc is None:
+                try:
+                    from tkinterweb import HtmlFrame
+                    web = HtmlFrame(top)
+                    web.load_website(url)
+                    web.pack(fill=tk.BOTH, expand=True)
+                    entry.update({"web": web})
+                except Exception:
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
+            else:
                 top.destroy()
-                continue
+                entry.update({"process": proc, "html": html, "window": None})
         else:
             top.destroy()
             continue
@@ -296,6 +316,43 @@ def fix_media_url(url: str) -> str:
         parsed = parsed._replace(netloc="nas.3no.kr", path=new_path)
         return urlunparse(parsed)
     return url
+
+
+def _launch_chrome(
+    url: str,
+    *,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+) -> tuple[Optional[subprocess.Popen], Optional[str]]:
+    """Launch Chrome/Chromium to display ``url`` and return process and html path."""
+    exe = (
+        shutil.which("google-chrome")
+        or shutil.which("chromium-browser")
+        or shutil.which("chromium")
+        or shutil.which("chrome")
+    )
+    if not exe:
+        return None, None
+    html = (
+        "<html><head>"
+        "<style>html,body{margin:0;padding:0;overflow:hidden;}"
+        "::-webkit-scrollbar{display:none;}</style>"
+        "</head><body>"
+        f"<iframe src=\"{url}\" frameborder=0 style=\"width:100%;height:100%;\"></iframe>"
+        "</body></html>"
+    )
+    fd, path = tempfile.mkstemp(suffix=".html")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(html)
+    cmd = [exe, f"--app=file://{path}", "--hide-scrollbars"]
+    if width and height:
+        cmd.append(f"--window-size={int(width)},{int(height)}")
+    if x is not None and y is not None:
+        cmd.append(f"--window-position={int(x)},{int(y)}")
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return proc, path
 
 
 def run(
