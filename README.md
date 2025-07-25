@@ -61,10 +61,6 @@ lowest order with each window lifted so lower numbers appear on top, allowing
 precise control of the stacking order.  GIF images animate and transparency is
 respected.
 
-For `url` overlays on Windows the helper scripts try to launch Microsoft Edge
-or Chrome in app mode for better performance. If no supported browser is found,
-they fall back to the built in tkinter web view.
-
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
 `play-media` command with a `media_id` will immediately start playback of
