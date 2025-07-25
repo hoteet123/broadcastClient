@@ -7,7 +7,7 @@ A simple GUI/WebSocket client to fetch broadcast schedules and play TTS audio.
 Install dependencies (requires Python 3.8+):
 
 ```bash
-pip install websockets "httpx[http2]" pillow pystray python-vlc
+pip install websockets "httpx[http2]" pillow pystray python-vlc tkinterweb
 ```
 
 `httpx` is used with HTTP/2 enabled. If the optional `h2` package is not installed
