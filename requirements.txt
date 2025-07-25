@@ -4,3 +4,4 @@ pystray
 pillow
 python-vlc
 tkinterweb
+cefpython3; platform_system == "Windows"
