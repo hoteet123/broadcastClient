@@ -106,7 +106,16 @@ def _apply_gui_images(monitor: int) -> None:
     _clear_gui_elements(monitor)
     base_x = root.winfo_rootx()
     base_y = root.winfo_rooty()
-    for info in _gui_images.get(monitor, []):
+    images = list(_gui_images.get(monitor, []))
+
+    def order_val(item: Dict[str, any]) -> int:
+        try:
+            return int(float(item.get("GuiOrder", 0)))
+        except Exception:
+            return 0
+
+    images.sort(key=order_val, reverse=True)
+    for info in images:
         url = str(
             info.get("ImageUrl")
             or info.get("VideoUrl")

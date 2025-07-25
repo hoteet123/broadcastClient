@@ -53,9 +53,11 @@ system's display settings accordingly on Windows and Linux (including
 Raspberry Pi and Orange Pi) using platform specific commands.
 Additionally a `GuiImages` array may be provided to overlay elements on top of
 the VLC window.  Each entry should contain `ImageUrl`, `X`, `Y`, `Width`,
-`Height`, `GuiKind` and `Monitor` values.  `GuiKind` can be `image`, `video` or
-`url` and determines whether an image, video or embedded web view is shown on
-the specified monitor.  GIF images animate and transparency is respected.
+`Height`, `GuiKind`, `Monitor` and optional `GuiOrder` values.  `GuiKind` can
+be `image`, `video` or `url` and determines whether an image, video or embedded
+web view is shown on the specified monitor.  `GuiOrder` starts at `0` with
+lower numbers appearing above higher ones.  GIF images animate and transparency
+is respected.
 
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
