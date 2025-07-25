@@ -106,7 +106,12 @@ def _apply_gui_images(monitor: int) -> None:
     _clear_gui_elements(monitor)
     base_x = root.winfo_rootx()
     base_y = root.winfo_rooty()
-    for info in _gui_images.get(monitor, []):
+    # Process lowest orders first so smaller numbers remain on top
+    images = sorted(
+        _gui_images.get(monitor, []),
+        key=lambda i: int(i.get("GuiOrder", 0)),
+    )
+    for info in images:
         url = str(
             info.get("ImageUrl")
             or info.get("VideoUrl")
