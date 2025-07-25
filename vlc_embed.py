@@ -13,6 +13,16 @@ import time
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
 
+try:
+    from cefpython3 import cefpython as cef  # type: ignore
+    CEF_AVAILABLE = True
+except Exception as e:  # noqa: BLE001
+    print(f"CEF not available: {e}")
+    cef = None
+    CEF_AVAILABLE = False
+
+_cef_initialized = False
+
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
@@ -138,12 +148,61 @@ def _load_image_frames(
     return frames, delays
 
 
+def _init_cef() -> bool:
+    """Initialize CEF if available. Return True on success."""
+    global _cef_initialized
+    if not CEF_AVAILABLE or _cef_initialized:
+        return CEF_AVAILABLE and _cef_initialized
+    try:
+        cef.Initialize()
+        _cef_initialized = True
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"Failed to initialize CEF: {exc}")
+        return False
+
+
+def _cef_loop() -> None:
+    if _cef_initialized:
+        try:
+            cef.MessageLoopWork()
+        except Exception:
+            pass
+        for root in _roots.values():
+            if root.winfo_exists():
+                root.after(10, _cef_loop)
+                break
+
+
+def _cef_check_shutdown() -> None:
+    """Shutdown CEF when no browsers are active."""
+    global _cef_initialized
+    if _cef_initialized:
+        active = any(
+            entry.get("cef_browser")
+            for entries in _gui_entries.values()
+            for entry in entries
+        )
+        if not active:
+            try:
+                cef.Shutdown()
+            except Exception:
+                pass
+            _cef_initialized = False
+
+
 def _clear_gui_elements(monitor: int) -> None:
     for entry in _gui_entries.get(monitor, []):
         player = entry.get("player")
         if player is not None:
             try:
                 player.stop()
+            except Exception:
+                pass
+        browser = entry.get("cef_browser")
+        if browser is not None:
+            try:
+                browser.CloseBrowser(True)
             except Exception:
                 pass
         label = entry.get("label")
@@ -159,6 +218,7 @@ def _clear_gui_elements(monitor: int) -> None:
             except Exception:
                 pass
     _gui_entries[monitor] = []
+    _cef_check_shutdown()
 
 
 def _apply_gui_images(monitor: int) -> None:
@@ -252,17 +312,46 @@ def _apply_gui_images(monitor: int) -> None:
             player.play()
             entry.update({"player": player})
         elif kind == "url":
-            try:
-                from tkinterweb import HtmlFrame
-                web = HtmlFrame(top)
-                web.load_website(url)
-                web.pack(fill=tk.BOTH, expand=True)
-                entry.update({"web": web})
-            except Exception:
-                import webbrowser
-                webbrowser.open(url)
-                top.destroy()
-                continue
+            if CEF_AVAILABLE and _init_cef():
+                try:
+                    frame = tk.Frame(top, background="black")
+                    if width and height:
+                        frame.place(x=0, y=0, width=int(width), height=int(height))
+                    else:
+                        frame.pack(fill=tk.BOTH, expand=True)
+                    window_info = cef.WindowInfo()
+                    w_rect = int(width or frame.winfo_width() or 800)
+                    h_rect = int(height or frame.winfo_height() or 600)
+                    rect = [0, 0, w_rect, h_rect]
+                    window_info.SetAsChild(frame.winfo_id(), rect)
+                    browser = cef.CreateBrowserSync(window_info, url=url)
+                    _cef_loop()
+                    entry.update({"cef_browser": browser, "frame": frame})
+                except Exception as e:
+                    print(f"CEF web view failed: {e}")
+                    try:
+                        from tkinterweb import HtmlFrame
+                        web = HtmlFrame(top)
+                        web.load_website(url)
+                        web.pack(fill=tk.BOTH, expand=True)
+                        entry.update({"web": web})
+                    except Exception:
+                        import webbrowser
+                        webbrowser.open(url)
+                        top.destroy()
+                        continue
+            else:
+                try:
+                    from tkinterweb import HtmlFrame
+                    web = HtmlFrame(top)
+                    web.load_website(url)
+                    web.pack(fill=tk.BOTH, expand=True)
+                    entry.update({"web": web})
+                except Exception:
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
         else:
             top.destroy()
             continue
@@ -374,6 +463,7 @@ def stop(monitor: int = 1) -> None:
         _roots.pop(monitor, None)
     _clear_gui_elements(monitor)
     _gui_images.pop(monitor, None)
+    _cef_check_shutdown()
 
 
 # Backwards compatibility
