@@ -36,15 +36,26 @@ CACHE_DIR = RUN_DIR / "cache"
 
 def _find_chrome() -> Optional[str]:
     """Return path to a Chrome/Chromium executable if available."""
-    for name in (
+    candidates = [
         "google-chrome",
         "chrome",
         "chromium-browser",
         "chromium",
-    ):
-        path = shutil.which(name)
-        if path:
-            return path
+    ]
+    if sys.platform.startswith("win"):
+        candidates.extend([
+            os.path.join(os.environ.get("PROGRAMFILES", ""), "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
+        ])
+    for name in candidates:
+        if os.path.isabs(name):
+            if os.path.exists(name):
+                return name
+        else:
+            path = shutil.which(name)
+            if path:
+                return path
     return None
 
 
