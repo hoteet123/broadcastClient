@@ -23,6 +23,7 @@ import io
 import time
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
+from tkinterweb import HtmlFrame
 
 DEFAULT_IMAGE_DURATION = 5
 
@@ -42,6 +43,7 @@ _last_mtimes: Dict[int, float] = {}
 _gui_images: Dict[int, List[Dict[str, any]]] = {}
 _gui_labels: Dict[int, List[Dict[str, any]]] = {}
 _gui_windows: Dict[int, List[tk.Toplevel]] = {}
+_gui_videos: Dict[int, List[Dict[str, any]]] = {}
 
 
 def _load_image_frames(
@@ -78,6 +80,12 @@ def _load_image_frames(
 
 
 def _clear_gui_images(monitor: int) -> None:
+    for entry in _gui_videos.get(monitor, []):
+        try:
+            entry.get("player").stop()
+        except Exception:
+            pass
+    _gui_videos[monitor] = []
     for item in _gui_labels.get(monitor, []):
         try:
             item["label"].destroy()
@@ -100,6 +108,7 @@ def _apply_gui_images(monitor: int) -> None:
     base_x = root.winfo_rootx()
     base_y = root.winfo_rooty()
     for info in _gui_images.get(monitor, []):
+        kind = str(info.get("GuiKind") or info.get("kind") or "image").lower()
         url = str(info.get("ImageUrl") or info.get("url") or "")
         if url:
             url = fix_media_url(url)
@@ -108,24 +117,33 @@ def _apply_gui_images(monitor: int) -> None:
         w = info.get("Width")
         h = info.get("Height")
         try:
-            frames, delays = _load_image_frames(
-                url,
-                int(float(w)) if w else None,
-                int(float(h)) if h else None,
-                root,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"Failed to load GUI image {url}: {e}")
-            continue
-        if not frames:
-            continue
-        try:
             x = int(float(info.get("X", 0)))
             y = int(float(info.get("Y", 0)))
         except Exception:
             x = y = 0
-        width = int(float(w)) if w else frames[0].width()
-        height = int(float(h)) if h else frames[0].height()
+
+        if kind == "image":
+            try:
+                frames, delays = _load_image_frames(
+                    url,
+                    int(float(w)) if w else None,
+                    int(float(h)) if h else None,
+                    root,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to load GUI image {url}: {e}")
+                continue
+            if not frames:
+                continue
+            width = int(float(w)) if w else frames[0].width()
+            height = int(float(h)) if h else frames[0].height()
+        else:
+            try:
+                width = int(float(w)) if w else 320
+                height = int(float(h)) if h else 240
+            except Exception:
+                width = 320
+                height = 240
 
         top = tk.Toplevel(root)
         top.overrideredirect(True)
@@ -138,21 +156,45 @@ def _apply_gui_images(monitor: int) -> None:
         top.configure(bg=trans)
         top.geometry(f"{width}x{height}+{base_x + x}+{base_y + y}")
 
-        label = tk.Label(top, image=frames[0], bd=0, highlightthickness=0, bg=trans)
-        label.pack(fill=tk.BOTH, expand=True)
+        if kind == "image":
+            label = tk.Label(top, image=frames[0], bd=0, highlightthickness=0, bg=trans)
+            label.pack(fill=tk.BOTH, expand=True)
+            entry = {"label": label, "frames": frames, "delays": delays}
+            _gui_labels.setdefault(monitor, []).append(entry)
+            if len(frames) > 1:
+                def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
+                    if not lbl.winfo_exists():
+                        return
+                    lbl.configure(image=frs[idx])
+                    lbl.after(durs[idx], animate, (idx + 1) % len(frs), lbl, frs, durs)
 
-        entry = {"label": label, "frames": frames, "delays": delays}
-        _gui_labels.setdefault(monitor, []).append(entry)
+                label.after(delays[0], animate, 1, label, frames, delays)
+        elif kind == "video":
+            frame = tk.Frame(top, background="black")
+            frame.pack(fill=tk.BOTH, expand=True)
+            inst = vlc.Instance("--no-xlib")
+            player = inst.media_player_new()
+            top.update_idletasks()
+            _attach_handle(player, frame.winfo_id())
+            try:
+                media_url = cache_media(url)
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to load GUI video {url}: {e}")
+                top.destroy()
+                continue
+            media = inst.media_new(media_url)
+            player.set_media(media)
+            player.play()
+            _gui_videos.setdefault(monitor, []).append({"player": player, "instance": inst})
+        else:
+            frame = HtmlFrame(top)
+            try:
+                frame.load_website(url)
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to load GUI url {url}: {e}")
+            frame.pack(fill=tk.BOTH, expand=True)
+
         _gui_windows.setdefault(monitor, []).append(top)
-
-        if len(frames) > 1:
-            def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
-                if not lbl.winfo_exists():
-                    return
-                lbl.configure(image=frs[idx])
-                lbl.after(durs[idx], animate, (idx + 1) % len(frs), lbl, frs, durs)
-
-            label.after(delays[0], animate, 1, label, frames, delays)
 
 
 def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
