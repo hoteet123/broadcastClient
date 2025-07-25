@@ -121,7 +121,9 @@ class WSClient:
             },
         }
         self.playmode = 0
+        self.monitor_count = display_config.get_monitor_count()
         self.gui_images = []
+        self.gui_images_by_monitor = {1: [], 2: []}
 
     def start(self):
         self.thread.start()
@@ -136,6 +138,8 @@ class WSClient:
 
     def start_vlc(self, url: Optional[str] = None, monitor: int = 1) -> None:
         """Launch VLC to play ``url`` on ``monitor`` using a thread."""
+        if monitor > self.monitor_count:
+            return
         mon = self.monitors.get(monitor)
         if not mon:
             return
@@ -154,11 +158,12 @@ class WSClient:
             target=vlc_embed.run, args=(url,), kwargs=kwargs, daemon=True
         )
         mon["vlc_thread"].start()
-        vlc_embed.set_gui_images(self.gui_images, monitor)
+        vlc_embed.set_gui_images(self.gui_images_by_monitor.get(monitor, []), monitor)
 
     def start_vlc_playlist(self, items: list, start_index: int = 0, monitor: int = 1) -> None:
         """Launch or update VLC playlist on ``monitor`` without closing the window."""
-
+        if monitor > self.monitor_count:
+            return
         mon = self.monitors.get(monitor)
         if not mon:
             return
@@ -197,11 +202,14 @@ class WSClient:
             daemon=True,
         )
         mon["playlist_thread"].start()
-        vlc_playlist.set_gui_images(self.gui_images, monitor)
+        vlc_playlist.set_gui_images(
+            self.gui_images_by_monitor.get(monitor, []), monitor
+        )
 
 
     def stop_vlc(self, monitor: Optional[int] = None) -> None:
         mons = [monitor] if monitor else list(self.monitors.keys())
+        mons = [m for m in mons if m <= self.monitor_count]
         for m in mons:
             mon = self.monitors.get(m)
             if not mon:
@@ -345,6 +353,8 @@ class WSClient:
                     mon1 = data.get("Monitor1") or {}
                     mon2 = data.get("Monitor2") or {}
                     for idx, mon in ((1, mon1), (2, mon2)):
+                        if idx > self.monitor_count:
+                            continue
                         if not isinstance(mon, dict):
                             continue
                         r = mon.get("Resolution") or mon.get("resolution")
@@ -365,9 +375,22 @@ class WSClient:
                     images = data.get("GuiImages")
                     if isinstance(images, list):
                         self.gui_images = list(images)
-                        for idx in (1, 2):
-                            vlc_embed.set_gui_images(self.gui_images, idx)
-                            vlc_playlist.set_gui_images(self.gui_images, idx)
+                        self.gui_images_by_monitor = {1: [], 2: []}
+                        for info in images:
+                            try:
+                                m = int(info.get("Monitor", 1))
+                            except Exception:
+                                m = 1
+                            if m not in (1, 2) or m > self.monitor_count:
+                                m = 1
+                            self.gui_images_by_monitor.setdefault(m, []).append(info)
+                        for idx in range(1, self.monitor_count + 1):
+                            vlc_embed.set_gui_images(
+                                self.gui_images_by_monitor.get(idx, []), idx
+                            )
+                            vlc_playlist.set_gui_images(
+                                self.gui_images_by_monitor.get(idx, []), idx
+                            )
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")
@@ -382,7 +405,7 @@ class WSClient:
                         await self.update_schedules(start_scheduler=playmode != 2)
                         if playmode in {1, 2}:
                             url = data.get("StreamURL") or data.get("url")
-                            for idx in (1, 2):
+                            for idx in range(1, self.monitor_count + 1):
                                 self.start_vlc(url, monitor=idx)
                         else:
                             self.stop_vlc()
@@ -401,6 +424,8 @@ class WSClient:
                     if mid is not None:
                         mid_str = str(mid)
                         for m_idx, mon in self.monitors.items():
+                            if m_idx > self.monitor_count:
+                                continue
                             items = mon.get("playlist_items", [])
                             for i, it in enumerate(items):
                                 if str(it.get("MediaID") or it.get("media_id") or it.get("id")) == mid_str:
@@ -434,7 +459,7 @@ class WSClient:
                             if m not in by_monitor:
                                 m = 1
                             by_monitor[m].append(it)
-                        for m_idx in (1, 2):
+                        for m_idx in range(1, self.monitor_count + 1):
                             new_list = by_monitor[m_idx]
                             old = self.monitors[m_idx]["playlist_items"]
                             same_order = (

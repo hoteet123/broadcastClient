@@ -1,7 +1,37 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional, Union
+from typing import Optional, Union, List
+
+
+def _xrandr_outputs() -> List[str]:
+    """Return connected display names with primary output first."""
+    out = subprocess.run(["xrandr"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return []
+    primary = []
+    others = []
+    for line in out.stdout.splitlines():
+        if " connected" in line:
+            name = line.split()[0]
+            if "primary" in line:
+                primary.append(name)
+            else:
+                others.append(name)
+    return primary + others
+
+
+def get_monitor_count() -> int:
+    """Return the number of connected displays."""
+    if sys.platform.startswith("win"):
+        try:
+            user32 = ctypes.windll.user32
+            return max(1, int(user32.GetSystemMetrics(80)))
+        except Exception:
+            return 1
+    else:
+        outputs = _xrandr_outputs()
+        return max(1, len(outputs))
 
 
 def set_display_config(
@@ -43,13 +73,7 @@ def _set_xrandr_display(
     orientation: Optional[int],
     monitor: int,
 ) -> None:
-    output = subprocess.run(['xrandr'], capture_output=True, text=True)
-    if output.returncode != 0:
-        return
-    outputs = []
-    for line in output.stdout.splitlines():
-        if ' connected' in line:
-            outputs.append(line.split()[0])
+    outputs = _xrandr_outputs()
     if not outputs or monitor < 1 or monitor > len(outputs):
         return
     name = outputs[monitor - 1]
