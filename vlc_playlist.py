@@ -40,8 +40,7 @@ _items_map: Dict[int, list] = {}
 _idx_map: Dict[int, int] = {}
 _last_mtimes: Dict[int, float] = {}
 _gui_images: Dict[int, List[Dict[str, any]]] = {}
-_gui_labels: Dict[int, List[Dict[str, any]]] = {}
-_gui_windows: Dict[int, List[tk.Toplevel]] = {}
+_gui_entries: Dict[int, List[Dict[str, any]]] = {}
 
 
 def _load_image_frames(
@@ -77,55 +76,58 @@ def _load_image_frames(
     return frames, delays
 
 
-def _clear_gui_images(monitor: int) -> None:
-    for item in _gui_labels.get(monitor, []):
-        try:
-            item["label"].destroy()
-        except Exception:
-            pass
-    _gui_labels[monitor] = []
-    for win in _gui_windows.get(monitor, []):
-        try:
-            win.destroy()
-        except Exception:
-            pass
-    _gui_windows[monitor] = []
+def _clear_gui_elements(monitor: int) -> None:
+    for entry in _gui_entries.get(monitor, []):
+        player = entry.get("player")
+        if player is not None:
+            try:
+                player.stop()
+            except Exception:
+                pass
+        label = entry.get("label")
+        if label is not None:
+            try:
+                label.destroy()
+            except Exception:
+                pass
+        win = entry.get("window")
+        if win is not None:
+            try:
+                win.destroy()
+            except Exception:
+                pass
+    _gui_entries[monitor] = []
 
 
 def _apply_gui_images(monitor: int) -> None:
     root = _roots.get(monitor)
     if root is None or not root.winfo_exists():
         return
-    _clear_gui_images(monitor)
+    _clear_gui_elements(monitor)
     base_x = root.winfo_rootx()
     base_y = root.winfo_rooty()
     for info in _gui_images.get(monitor, []):
-        url = str(info.get("ImageUrl") or info.get("url") or "")
+        url = str(
+            info.get("ImageUrl")
+            or info.get("VideoUrl")
+            or info.get("Url")
+            or info.get("url")
+            or ""
+        )
         if url:
             url = fix_media_url(url)
         if not url:
             continue
+        kind = str(info.get("GuiKind") or info.get("kind") or "image").lower()
         w = info.get("Width")
         h = info.get("Height")
-        try:
-            frames, delays = _load_image_frames(
-                url,
-                int(float(w)) if w else None,
-                int(float(h)) if h else None,
-                root,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"Failed to load GUI image {url}: {e}")
-            continue
-        if not frames:
-            continue
         try:
             x = int(float(info.get("X", 0)))
             y = int(float(info.get("Y", 0)))
         except Exception:
             x = y = 0
-        width = int(float(w)) if w else frames[0].width()
-        height = int(float(h)) if h else frames[0].height()
+        width = int(float(w)) if w else None
+        height = int(float(h)) if h else None
 
         top = tk.Toplevel(root)
         top.overrideredirect(True)
@@ -136,26 +138,73 @@ def _apply_gui_images(monitor: int) -> None:
         except Exception:
             pass
         top.configure(bg=trans)
-        top.geometry(f"{width}x{height}+{base_x + x}+{base_y + y}")
+        if width and height:
+            top.geometry(f"{width}x{height}+{base_x + x}+{base_y + y}")
+        else:
+            top.geometry(f"+{base_x + x}+{base_y + y}")
 
-        label = tk.Label(top, image=frames[0], bd=0, highlightthickness=0, bg=trans)
-        label.pack(fill=tk.BOTH, expand=True)
+        entry = {"window": top, "kind": kind}
 
-        entry = {"label": label, "frames": frames, "delays": delays}
-        _gui_labels.setdefault(monitor, []).append(entry)
-        _gui_windows.setdefault(monitor, []).append(top)
+        if kind == "image":
+            try:
+                frames, delays = _load_image_frames(
+                    url,
+                    width,
+                    height,
+                    root,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"Failed to load GUI image {url}: {e}")
+                top.destroy()
+                continue
+            if not frames:
+                top.destroy()
+                continue
+            label = tk.Label(top, image=frames[0], bd=0, highlightthickness=0, bg=trans)
+            label.pack(fill=tk.BOTH, expand=True)
+            entry.update({"label": label, "frames": frames, "delays": delays})
+            if len(frames) > 1:
+                def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
+                    if not lbl.winfo_exists():
+                        return
+                    lbl.configure(image=frs[idx])
+                    lbl.after(durs[idx], animate, (idx + 1) % len(frs), lbl, frs, durs)
 
-        if len(frames) > 1:
-            def animate(idx: int = 0, lbl: tk.Label = label, frs=frames, durs=delays):
-                if not lbl.winfo_exists():
-                    return
-                lbl.configure(image=frs[idx])
-                lbl.after(durs[idx], animate, (idx + 1) % len(frs), lbl, frs, durs)
+                label.after(delays[0], animate, 1, label, frames, delays)
+        elif kind == "video":
+            frame = tk.Frame(top, background="black")
+            if width and height:
+                frame.place(x=0, y=0, width=int(width), height=int(height))
+            else:
+                frame.pack(fill=tk.BOTH, expand=True)
+            instance = vlc.Instance("--no-xlib")
+            player = instance.media_player_new()
+            _attach_handle(player, frame.winfo_id())
+            media = instance.media_new(url)
+            player.set_media(media)
+            player.play()
+            entry.update({"player": player})
+        elif kind == "url":
+            try:
+                from tkinterweb import HtmlFrame
+                web = HtmlFrame(top)
+                web.load_website(url)
+                web.pack(fill=tk.BOTH, expand=True)
+                entry.update({"web": web})
+            except Exception:
+                import webbrowser
+                webbrowser.open(url)
+                top.destroy()
+                continue
+        else:
+            top.destroy()
+            continue
 
-            label.after(delays[0], animate, 1, label, frames, delays)
+        _gui_entries.setdefault(monitor, []).append(entry)
 
 
 def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
+    """Update overlay elements (images, videos, web views) for ``monitor``."""
     _gui_images[monitor] = list(images) if images else []
     root = _roots.get(monitor)
     if root is not None:
@@ -454,7 +503,7 @@ def stop(monitor: int = 1) -> None:
     except Exception:
         pass
     _roots.pop(monitor, None)
-    _clear_gui_images(monitor)
+    _clear_gui_elements(monitor)
     _gui_images.pop(monitor, None)
 
 
