@@ -6,6 +6,7 @@ import tkinter as tk
 import vlc
 import pathlib
 import hashlib
+import os
 from urllib.parse import urlparse, urlunparse
 import httpx
 import io
@@ -158,6 +159,12 @@ def _clear_gui_elements(monitor: int) -> None:
                 win.destroy()
             except Exception:
                 pass
+        proc = entry.get("process")
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
     _gui_entries[monitor] = []
 
 
@@ -252,17 +259,48 @@ def _apply_gui_images(monitor: int) -> None:
             player.play()
             entry.update({"player": player})
         elif kind == "url":
-            try:
-                from tkinterweb import HtmlFrame
-                web = HtmlFrame(top)
-                web.load_website(url)
-                web.pack(fill=tk.BOTH, expand=True)
-                entry.update({"web": web})
-            except Exception:
-                import webbrowser
-                webbrowser.open(url)
+            proc = None
+            if sys.platform.startswith("win"):
+                import subprocess
+                edge_paths = [
+                    os.path.join(os.environ.get("PROGRAMFILES", ""),
+                                 "Microsoft", "Edge", "Application", "msedge.exe"),
+                    os.path.join(os.environ.get("PROGRAMFILES(X86)", ""),
+                                 "Microsoft", "Edge", "Application", "msedge.exe"),
+                ]
+                chrome_paths = [
+                    os.path.join(os.environ.get("PROGRAMFILES", ""),
+                                 "Google", "Chrome", "Application", "chrome.exe"),
+                    os.path.join(os.environ.get("PROGRAMFILES(X86)", ""),
+                                 "Google", "Chrome", "Application", "chrome.exe"),
+                ]
+                for exe in edge_paths + chrome_paths:
+                    if exe and os.path.exists(exe):
+                        args = [exe, f"--app={url}"]
+                        if width and height:
+                            args.append(f"--window-size={width},{height}")
+                        args.append(f"--window-position={base_x + x},{base_y + y}")
+                        try:
+                            proc = subprocess.Popen(args)
+                        except Exception:
+                            proc = None
+                        if proc:
+                            break
+            if proc:
+                entry.update({"process": proc})
                 top.destroy()
-                continue
+            else:
+                try:
+                    from tkinterweb import HtmlFrame
+                    web = HtmlFrame(top)
+                    web.load_website(url)
+                    web.pack(fill=tk.BOTH, expand=True)
+                    entry.update({"web": web})
+                except Exception:
+                    import webbrowser
+                    webbrowser.open(url)
+                    top.destroy()
+                    continue
         else:
             top.destroy()
             continue
