@@ -67,3 +67,6 @@ The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
 `play-media` command with a `media_id` will immediately start playback of
 the matching playlist item.
+
+`play-tts` messages can also be sent to immediately read arbitrary text
+using the same TTS backend used for scheduled broadcasts.

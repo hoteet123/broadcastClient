@@ -264,6 +264,13 @@ class WSClient:
         except Exception as e:  # noqa: BLE001
             print(f"Failed to play audio from {url}: {e}")
 
+    async def play_tts_text(
+        self, text: str, *, speed: float = 1.0, pitch: float = 1.0
+    ) -> None:
+        """Fetch TTS audio for ``text`` and play it."""
+        audio = await scheduler.tts_request(text, speed=speed, pitch=pitch)
+        scheduler.play_mp3(audio)
+
     async def connect_loop(self):
         backoff = 1
         while not self.stop_event.is_set():
@@ -419,6 +426,13 @@ class WSClient:
                     volume = data.get("volume")
                     if url:
                         asyncio.create_task(self.play_audio_url(url, volume))
+                elif isinstance(data, dict) and data.get("type") == "play-tts":
+                    text = data.get("text", "")
+                    speed = data.get("speed", 1.0)
+                    pitch = data.get("pitch", 1.0)
+                    asyncio.create_task(
+                        self.play_tts_text(text, speed=speed, pitch=pitch)
+                    )
                 elif isinstance(data, dict) and data.get("type") == "play-media":
                     mid = data.get("media_id")
                     if mid is not None:
