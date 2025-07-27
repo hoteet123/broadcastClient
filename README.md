@@ -26,7 +26,7 @@ systems where `h2` is missing.
 Edit `client.cfg` with your `HOST`, `API_KEY` and `DEVICE_ID`, then run:
 
 ```bash
-python gui_client.py
+python enterplayer.py
 ```
 
 The client stores the machine's MAC address in `client.cfg`. On the first run
