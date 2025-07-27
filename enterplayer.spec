@@ -28,7 +28,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='gui_client',           # dist/gui_client.exe
+    name='enterplayer',           # dist/enterplayer.exe
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
