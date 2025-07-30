@@ -99,6 +99,10 @@ def apply_window_geometry(window, monitor: int = 1) -> None:
         return
     x, y, w, h = geom
     try:
+        window.update_idletasks()
+    except Exception:
+        pass
+    try:
         window.geometry(f"{w}x{h}+{x}+{y}")
     except Exception:
         pass
@@ -222,22 +226,51 @@ if sys.platform.startswith('win'):
     }
 
     def _win_monitor_geometries() -> List[Tuple[int, int, int, int]]:
+        """Return monitor rectangles using EnumDisplayMonitors."""
         geoms: List[Tuple[int, int, int, int]] = []
         try:
             user32 = ctypes.windll.user32
-            count = int(user32.GetSystemMetrics(80))
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ("left", ctypes.c_long),
+                    ("top", ctypes.c_long),
+                    ("right", ctypes.c_long),
+                    ("bottom", ctypes.c_long),
+                ]
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.c_ulong),
+                    ("rcMonitor", RECT),
+                    ("rcWork", RECT),
+                    ("dwFlags", ctypes.c_ulong),
+                ]
+
+            MONITORENUMPROC = ctypes.WINFUNCTYPE(
+                ctypes.c_int,
+                ctypes.c_ulong,
+                ctypes.c_ulong,
+                ctypes.POINTER(RECT),
+                ctypes.c_double,
+            )
+
+            def callback(hMonitor, hdcMonitor, lprcMonitor, lParam):
+                info = MONITORINFO()
+                info.cbSize = ctypes.sizeof(MONITORINFO)
+                if user32.GetMonitorInfoW(hMonitor, ctypes.byref(info)):
+                    x = int(info.rcMonitor.left)
+                    y = int(info.rcMonitor.top)
+                    w = int(info.rcMonitor.right - info.rcMonitor.left)
+                    h = int(info.rcMonitor.bottom - info.rcMonitor.top)
+                    geoms.append((x, y, w, h))
+                return 1
+
+            user32.EnumDisplayMonitors(
+                0, 0, MONITORENUMPROC(callback), 0
+            )
         except Exception:
             return geoms
-        for i in range(1, count + 1):
-            try:
-                dev_name = f"\\\\.\\DISPLAY{i}"
-                dm = DEVMODE()
-                dm.dmSize = ctypes.sizeof(DEVMODE)
-                if user32.EnumDisplaySettingsW(dev_name, ENUM_CURRENT_SETTINGS, ctypes.byref(dm)) == 0:
-                    continue
-                geoms.append((int(dm.dmPositionX), int(dm.dmPositionY), int(dm.dmPelsWidth), int(dm.dmPelsHeight)))
-            except Exception:
-                continue
         return geoms
 
     def _set_windows_display(
