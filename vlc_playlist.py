@@ -377,9 +377,9 @@ def run(
     _roots[monitor] = root
     geom = display_config.get_monitor_geometry(monitor)
     if geom:
-        gx, gy, _, _ = geom
+        gx, gy, gw, gh = geom
         try:
-            root.geometry(f"+{gx}+{gy}")
+            root.geometry(f"{gw}x{gh}+{gx}+{gy}")
         except Exception:
             pass
     root.attributes("-fullscreen", True)

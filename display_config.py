@@ -39,7 +39,7 @@ def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]
     try:
         from screeninfo import get_monitors
 
-        monitors = get_monitors()
+        monitors = sorted(get_monitors(), key=lambda m: (int(m.x), int(m.y)))
         if 1 <= monitor <= len(monitors):
             m = monitors[monitor - 1]
             return int(m.x), int(m.y), int(m.width), int(m.height)
@@ -73,6 +73,7 @@ def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]
                 return 1
 
             user32.EnumDisplayMonitors(0, 0, MonitorEnumProc(_callback), 0)
+            monitors.sort(key=lambda m: (m[0], m[1]))
             if 1 <= monitor <= len(monitors):
                 return monitors[monitor - 1]
         except Exception:
@@ -81,20 +82,21 @@ def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]
         try:
             out = subprocess.run(["xrandr"], capture_output=True, text=True)
             if out.returncode == 0:
-                idx = 0
+                mons = []
                 for line in out.stdout.splitlines():
                     if " connected" in line:
-                        idx += 1
-                        if idx == monitor:
-                            for part in line.split():
-                                if "x" in part and "+" in part:
-                                    try:
-                                        res, x, y = part.split("+")
-                                        w, h = res.split("x")
-                                        return int(x), int(y), int(w), int(h)
-                                    except Exception:
-                                        pass
-                            break
+                        for part in line.split():
+                            if "x" in part and "+" in part:
+                                try:
+                                    res, x, y = part.split("+")
+                                    w, h = res.split("x")
+                                    mons.append((int(x), int(y), int(w), int(h)))
+                                    break
+                                except Exception:
+                                    pass
+                mons.sort(key=lambda m: (m[0], m[1]))
+                if 1 <= monitor <= len(mons):
+                    return mons[monitor - 1]
         except Exception:
             pass
 
