@@ -92,6 +92,24 @@ def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]
             return None
 
 
+def apply_window_geometry(window, monitor: int = 1) -> None:
+    """Move ``window`` to the specified monitor if geometry is available."""
+    geom = get_monitor_geometry(monitor)
+    if geom is None:
+        return
+    x, y, w, h = geom
+    try:
+        window.geometry(f"{w}x{h}+{x}+{y}")
+    except Exception:
+        pass
+    if sys.platform.startswith("win"):
+        try:
+            hwnd = int(window.winfo_id())
+            ctypes.windll.user32.MoveWindow(hwnd, x, y, w, h, True)
+        except Exception:
+            pass
+
+
 def set_display_config(
     resolution: Optional[str] = None,
     orientation: Optional[Union[int, str]] = None,

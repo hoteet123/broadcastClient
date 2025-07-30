@@ -376,13 +376,7 @@ def run(
     root = tk.Tk()
     _roots[monitor] = root
     root.attributes("-fullscreen", True)
-    geom = display_config.get_monitor_geometry(monitor)
-    if geom is not None:
-        gx, gy, gw, gh = geom
-        try:
-            root.geometry(f"{gw}x{gh}+{gx}+{gy}")
-        except Exception:
-            pass
+    display_config.apply_window_geometry(root, monitor)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
     if width and height:
