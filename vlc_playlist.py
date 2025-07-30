@@ -23,6 +23,7 @@ import io
 import time
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
+import display_config
 
 DEFAULT_IMAGE_DURATION = 5
 
@@ -374,6 +375,9 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
+    x0, y0, mw, mh = display_config.get_monitor_geometry(monitor)
+    root.geometry(f"{mw}x{mh}+{x0}+{y0}")
+    root.update_idletasks()
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
