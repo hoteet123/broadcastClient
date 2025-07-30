@@ -7,6 +7,8 @@ import uuid
 import ast
 import pathlib
 import os
+import subprocess
+import time
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
@@ -124,6 +126,7 @@ class WSClient:
         self.monitor_count = display_config.get_monitor_count()
         self.gui_images = []
         self.gui_images_by_monitor = {1: [], 2: []}
+        self.last_update_time = 0.0
 
     def start(self):
         self.thread.start()
@@ -230,6 +233,16 @@ class WSClient:
                 mon["playlist_path"] = None
             vlc_embed.set_gui_images([], m)
             vlc_playlist.set_gui_images([], m)
+
+    def launch_updater(self) -> None:
+        exe = RUN_DIR / "EnterPlayer_AutoUpdate.exe"
+        if not exe.exists():
+            print(f"Updater not found: {exe}")
+            return
+        try:
+            subprocess.Popen([str(exe)], cwd=str(RUN_DIR))
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to launch updater: {e}")
 
     def run(self):
         loop = asyncio.new_event_loop()
@@ -490,6 +503,13 @@ class WSClient:
                             self.start_vlc_playlist(new_list, monitor=m_idx)
                 elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
                     await self.update_schedules(start_scheduler=self.playmode != 2)
+                elif isinstance(data, dict) and data.get("type") == "update":
+                    now = time.monotonic()
+                    if now - self.last_update_time >= 30:
+                        self.last_update_time = now
+                        threading.Thread(target=self.launch_updater, daemon=True).start()
+                    else:
+                        print("Ignoring duplicate update command")
                 else:
                     print("[WS]", data)
         except ConnectionClosed:
