@@ -34,6 +34,22 @@ def get_monitor_count() -> int:
         return max(1, len(outputs))
 
 
+def get_monitor_geometry(monitor: int = 1) -> tuple[int, int, int, int]:
+    """Return ``(x, y, width, height)`` for the given monitor if available."""
+    try:
+        from screeninfo import get_monitors
+        mons = get_monitors()
+    except Exception:
+        mons = []
+    if not mons:
+        return 0, 0, 0, 0
+    if monitor < 1 or monitor > len(mons):
+        mon = mons[0]
+    else:
+        mon = mons[monitor - 1]
+    return int(mon.x), int(mon.y), int(mon.width), int(mon.height)
+
+
 def set_display_config(
     resolution: Optional[str] = None,
     orientation: Optional[Union[int, str]] = None,
