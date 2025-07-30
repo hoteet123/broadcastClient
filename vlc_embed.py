@@ -326,17 +326,16 @@ def run(
     height: Optional[int] = None,
     monitor: int = 1,
 ) -> None:
-    """Play ``url`` in a fullscreen window with an embedded player.
+    """Play ``url`` in a borderless window with an embedded player.
 
     ``x``/``y`` specify the top left corner of the embedded player within the
-    fullscreen window and ``width``/``height`` control its size.  When no
-    geometry is provided the player fills the entire screen.
+    window and ``width``/``height`` control its size.  When no geometry is
+    provided the player fills the entire screen.
     """
     global _roots, _players
     root = tk.Tk()
     _roots[monitor] = root
-    display_config.apply_window_geometry(root, monitor)
-    root.attributes("-fullscreen", True)
+    root.overrideredirect(True)
     display_config.apply_window_geometry(root, monitor)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")

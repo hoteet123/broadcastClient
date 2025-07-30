@@ -46,7 +46,7 @@ python scheduler.py
 
 When the server sends a config message with `Playmode` set to `1`,
 `gui_client.py` will launch `vlc_embed.py` to play a provided `StreamURL`
-in a fullscreen embedded VLC window. The helper script attaches VLC to a
+in a borderless embedded VLC window. The helper script attaches VLC to a
 Tkinter window using the correct API for Windows, macOS, or X11-based
 Linux/Raspbian environments.
 If no stream URL is supplied, it defaults to `http://nas.3no.kr/test.mp4`.
@@ -68,7 +68,7 @@ or Chrome in app mode for better performance. If no supported browser is found,
 they fall back to the built in tkinter web view.
 
 The client also handles playlist messages. When a playlist is received it
-is passed to `vlc_playlist.py` for fullscreen playback. A subsequent
+is passed to `vlc_playlist.py` for borderless playback. A subsequent
 `play-media` command with a `media_id` will immediately start playback of
 the matching playlist item.
 

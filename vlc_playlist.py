@@ -1,4 +1,4 @@
-"""Play a playlist of media items in fullscreen using VLC.
+"""Play a playlist of media items in a borderless window using VLC.
 
 The functions here mirror the previous standalone script behaviour but allow
 embedding the player in the current process.  ``run()`` starts playback of a
@@ -347,8 +347,8 @@ def run(
 ) -> None:
     """Play playlist defined in ``path`` and reload when it changes.
 
-    The player always opens a fullscreen window.  When ``width`` and ``height``
-    are supplied the VLC player is embedded at ``x``, ``y`` with the given size.
+    The player opens a borderless window.  When ``width`` and ``height`` are
+    supplied the VLC player is embedded at ``x``, ``y`` with the given size.
     Otherwise the player fills the entire window.
     """
 
@@ -375,8 +375,7 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
-    display_config.apply_window_geometry(root, monitor)
-    root.attributes("-fullscreen", True)
+    root.overrideredirect(True)
     display_config.apply_window_geometry(root, monitor)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
