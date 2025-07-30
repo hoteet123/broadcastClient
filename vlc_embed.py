@@ -335,6 +335,7 @@ def run(
     global _roots, _players
     root = tk.Tk()
     _roots[monitor] = root
+    display_config.apply_window_geometry(root, monitor)
     root.attributes("-fullscreen", True)
     display_config.apply_window_geometry(root, monitor)
     root.configure(background="black")
