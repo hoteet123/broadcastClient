@@ -15,6 +15,7 @@ import os
 import ctypes
 import tkinter as tk
 import vlc
+import display_config
 from urllib.parse import urlparse, urlunparse
 import pathlib
 import hashlib
@@ -374,6 +375,13 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
+    geom = display_config.get_monitor_geometry(monitor)
+    if geom:
+        gx, gy, _, _ = geom
+        try:
+            root.geometry(f"+{gx}+{gy}")
+        except Exception:
+            pass
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
