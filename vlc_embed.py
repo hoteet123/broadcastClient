@@ -13,6 +13,7 @@ import io
 import time
 from typing import Optional, List, Dict
 from PIL import Image, ImageTk, ImageSequence
+import display_config
 
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
@@ -334,6 +335,10 @@ def run(
     global _roots, _players
     root = tk.Tk()
     _roots[monitor] = root
+    geom = display_config.get_monitor_geometry(monitor)
+    if geom:
+        gx, gy, gw, gh = geom
+        root.geometry(f"{gw}x{gh}+{gx}+{gy}")
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
