@@ -375,8 +375,9 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
-    root.attributes("-fullscreen", True)
     display_config.apply_window_geometry(root, monitor)
+    root.update_idletasks()
+    root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
     if width and height:

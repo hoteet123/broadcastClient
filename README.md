@@ -48,7 +48,9 @@ When the server sends a config message with `Playmode` set to `1`,
 `gui_client.py` will launch `vlc_embed.py` to play a provided `StreamURL`
 in a fullscreen embedded VLC window. The helper script attaches VLC to a
 Tkinter window using the correct API for Windows, macOS, or X11-based
-Linux/Raspbian environments.
+Linux/Raspbian environments.  On multi-monitor systems the window is
+positioned on the target display before switching to fullscreen so it
+stays anchored to the chosen monitor just like the GUI overlays.
 If no stream URL is supplied, it defaults to `http://nas.3no.kr/test.mp4`.
 
 Config messages may also include `Resolution` (e.g. `"1920x1080"`) and
