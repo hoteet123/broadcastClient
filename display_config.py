@@ -1,7 +1,7 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 
 
 def _xrandr_outputs() -> List[str]:
@@ -32,6 +32,33 @@ def get_monitor_count() -> int:
     else:
         outputs = _xrandr_outputs()
         return max(1, len(outputs))
+
+
+def get_monitor_geometry(monitor: int = 1) -> Tuple[int, int, int, int]:
+    """Return ``(x, y, width, height)`` for the given monitor."""
+    try:
+        from screeninfo import get_monitors
+
+        mons = get_monitors()
+        if not mons:
+            raise RuntimeError("no monitors")
+        if monitor < 1 or monitor > len(mons):
+            m = mons[0]
+        else:
+            m = mons[monitor - 1]
+        return int(m.x), int(m.y), int(m.width), int(m.height)
+    except Exception:
+        try:
+            import tkinter as tk
+
+            root = tk.Tk()
+            root.withdraw()
+            width = root.winfo_screenwidth()
+            height = root.winfo_screenheight()
+            root.destroy()
+        except Exception:
+            width = height = 0
+        return 0, 0, int(width), int(height)
 
 
 def set_display_config(
