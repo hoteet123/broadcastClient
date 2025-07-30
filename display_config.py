@@ -34,6 +34,75 @@ def get_monitor_count() -> int:
         return max(1, len(outputs))
 
 
+def get_monitor_geometry(monitor: int = 1) -> Optional[tuple[int, int, int, int]]:
+    """Return ``(x, y, width, height)`` of the given monitor if available."""
+    if monitor < 1:
+        return None
+    try:
+        from screeninfo import get_monitors
+
+        mons = get_monitors()
+        if 0 < monitor <= len(mons):
+            m = mons[monitor - 1]
+            return int(m.x), int(m.y), int(m.width), int(m.height)
+    except Exception:
+        pass
+
+    if sys.platform.startswith("win"):
+        try:
+            user32 = ctypes.windll.user32
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ("left", ctypes.c_long),
+                    ("top", ctypes.c_long),
+                    ("right", ctypes.c_long),
+                    ("bottom", ctypes.c_long),
+                ]
+
+            def callback(hmon, hdc, rect, lparam):
+                r = rect.contents
+                monitors.append(
+                    (r.left, r.top, r.right - r.left, r.bottom - r.top)
+                )
+                return 1
+
+            monitors = []
+            MONITORENUMPROC = ctypes.WINFUNCTYPE(
+                ctypes.c_int,
+                ctypes.c_ulong,
+                ctypes.c_ulong,
+                ctypes.POINTER(RECT),
+                ctypes.c_double,
+            )
+            user32.EnumDisplayMonitors(0, 0, MONITORENUMPROC(callback), 0)
+            if 0 < monitor <= len(monitors):
+                return monitors[monitor - 1]
+        except Exception:
+            pass
+    else:
+        try:
+            out = subprocess.run(["xrandr"], capture_output=True, text=True)
+            if out.returncode == 0:
+                geoms = []
+                for line in out.stdout.splitlines():
+                    if " connected" in line:
+                        tokens = line.split()
+                        geom = next(
+                            (t for t in tokens if "+" in t and "x" in t), None
+                        )
+                        if geom:
+                            res, xs, ys = geom.split("+")
+                            w, h = res.split("x")
+                            geoms.append((int(xs), int(ys), int(w), int(h)))
+                if 0 < monitor <= len(geoms):
+                    return geoms[monitor - 1]
+        except Exception:
+            pass
+
+    return None
+
+
 def set_display_config(
     resolution: Optional[str] = None,
     orientation: Optional[Union[int, str]] = None,
