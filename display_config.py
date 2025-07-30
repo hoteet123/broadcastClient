@@ -1,7 +1,12 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
+
+try:
+    from screeninfo import get_monitors
+except Exception:  # pragma: no cover - optional dependency may not be installed
+    get_monitors = None
 
 
 def _xrandr_outputs() -> List[str]:
@@ -32,6 +37,23 @@ def get_monitor_count() -> int:
     else:
         outputs = _xrandr_outputs()
         return max(1, len(outputs))
+
+
+def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]]:
+    """Return ``(x, y, width, height)`` for ``monitor`` if available."""
+    if get_monitors is None:
+        return None
+    try:
+        mons = get_monitors()
+    except Exception:
+        return None
+    if not mons or monitor < 1 or monitor > len(mons):
+        return None
+    m = mons[monitor - 1]
+    try:
+        return int(m.x), int(m.y), int(m.width), int(m.height)
+    except Exception:
+        return None
 
 
 def set_display_config(

@@ -22,6 +22,7 @@ import httpx
 import io
 import time
 from typing import Optional, List, Dict
+import display_config
 from PIL import Image, ImageTk, ImageSequence
 
 DEFAULT_IMAGE_DURATION = 5
@@ -374,6 +375,13 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
+    geom = display_config.get_monitor_geometry(monitor)
+    if geom is not None:
+        gx, gy, gw, gh = geom
+        try:
+            root.geometry(f"{gw}x{gh}+{gx}+{gy}")
+        except Exception:
+            pass
     root.attributes("-fullscreen", True)
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
