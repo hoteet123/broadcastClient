@@ -1,7 +1,7 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Dict
 
 try:
     from screeninfo import get_monitors
@@ -26,6 +26,34 @@ def _xrandr_outputs() -> List[str]:
     return primary + others
 
 
+def _xrandr_monitor_geometries() -> List[Tuple[int, int, int, int]]:
+    """Return monitor geometries via xrandr if available."""
+    out = subprocess.run(["xrandr"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return []
+    geoms: Dict[str, Tuple[int, int, int, int]] = {}
+    for line in out.stdout.splitlines():
+        if " connected" not in line:
+            continue
+        parts = line.split()
+        name = parts[0]
+        geom = None
+        for p in parts:
+            if "x" in p and "+" in p and not p.startswith("("):
+                geom = p
+                break
+        if geom is None:
+            continue
+        try:
+            res, x, y = geom.split("+")[:3]
+            w, h = res.split("x")
+            geoms[name] = (int(x), int(y), int(w), int(h))
+        except Exception:
+            continue
+    outputs = _xrandr_outputs()
+    return [geoms.get(o, (0, 0, 0, 0)) for o in outputs if o in geoms]
+
+
 def get_monitor_count() -> int:
     """Return the number of connected displays."""
     if sys.platform.startswith("win"):
@@ -41,19 +69,27 @@ def get_monitor_count() -> int:
 
 def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]]:
     """Return ``(x, y, width, height)`` for ``monitor`` if available."""
-    if get_monitors is None:
-        return None
-    try:
-        mons = get_monitors()
-    except Exception:
-        return None
+    mons = []
+    if get_monitors is not None:
+        try:
+            mons = get_monitors()
+        except Exception:
+            mons = []
+    if not mons:
+        if sys.platform.startswith("win"):
+            mons = _win_monitor_geometries()
+        else:
+            mons = _xrandr_monitor_geometries()
     if not mons or monitor < 1 or monitor > len(mons):
         return None
     m = mons[monitor - 1]
     try:
-        return int(m.x), int(m.y), int(m.width), int(m.height)
+        return int(m[0]), int(m[1]), int(m[2]), int(m[3])
     except Exception:
-        return None
+        try:
+            return int(m.x), int(m.y), int(m.width), int(m.height)  # type: ignore[attr-defined]
+        except Exception:
+            return None
 
 
 def set_display_config(
@@ -166,6 +202,25 @@ if sys.platform.startswith('win'):
         180: 2,
         270: 3,
     }
+
+    def _win_monitor_geometries() -> List[Tuple[int, int, int, int]]:
+        geoms: List[Tuple[int, int, int, int]] = []
+        try:
+            user32 = ctypes.windll.user32
+            count = int(user32.GetSystemMetrics(80))
+        except Exception:
+            return geoms
+        for i in range(1, count + 1):
+            try:
+                dev_name = f"\\\\.\\DISPLAY{i}"
+                dm = DEVMODE()
+                dm.dmSize = ctypes.sizeof(DEVMODE)
+                if user32.EnumDisplaySettingsW(dev_name, ENUM_CURRENT_SETTINGS, ctypes.byref(dm)) == 0:
+                    continue
+                geoms.append((int(dm.dmPositionX), int(dm.dmPositionY), int(dm.dmPelsWidth), int(dm.dmPelsHeight)))
+            except Exception:
+                continue
+        return geoms
 
     def _set_windows_display(
         width: Optional[int],

@@ -10,6 +10,10 @@ Install dependencies (requires Python 3.8+):
 pip install websockets "httpx[http2]" pillow pystray python-vlc screeninfo
 ```
 
+`screeninfo` is optional but recommended for detecting monitor geometry. On
+Linux systems without it installed, the helper scripts fall back to parsing the
+output of `xrandr`.
+
 `httpx` is used with HTTP/2 enabled. If the optional `h2` package is not installed
 (i.e. if you only run `pip install httpx`), the program will fail with an error
 similar to:
