@@ -1,7 +1,7 @@
 import sys
 import subprocess
 import ctypes
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 
 
 def _xrandr_outputs() -> List[str]:
@@ -32,6 +32,85 @@ def get_monitor_count() -> int:
     else:
         outputs = _xrandr_outputs()
         return max(1, len(outputs))
+
+
+def get_monitor_geometry(monitor: int = 1) -> Optional[Tuple[int, int, int, int]]:
+    """Return the (x, y, width, height) of ``monitor`` if detectable."""
+    try:
+        from screeninfo import get_monitors
+
+        monitors = sorted(get_monitors(), key=lambda m: (int(m.x), int(m.y)))
+        if 1 <= monitor <= len(monitors):
+            m = monitors[monitor - 1]
+            return int(m.x), int(m.y), int(m.width), int(m.height)
+    except Exception:
+        pass
+
+    if sys.platform.startswith("win"):
+        try:
+            user32 = ctypes.windll.user32
+            monitors = []
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ("left", ctypes.c_long),
+                    ("top", ctypes.c_long),
+                    ("right", ctypes.c_long),
+                    ("bottom", ctypes.c_long),
+                ]
+
+            MonitorEnumProc = ctypes.WINFUNCTYPE(
+                ctypes.c_int,
+                ctypes.c_ulong,
+                ctypes.c_ulong,
+                ctypes.POINTER(RECT),
+                ctypes.c_double,
+            )
+
+            def _callback(hMon, hDC, lprc, dwData):
+                r = lprc.contents
+                monitors.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
+                return 1
+
+            user32.EnumDisplayMonitors(0, 0, MonitorEnumProc(_callback), 0)
+            monitors.sort(key=lambda m: (m[0], m[1]))
+            if 1 <= monitor <= len(monitors):
+                return monitors[monitor - 1]
+        except Exception:
+            pass
+    else:
+        try:
+            out = subprocess.run(["xrandr"], capture_output=True, text=True)
+            if out.returncode == 0:
+                mons = []
+                for line in out.stdout.splitlines():
+                    if " connected" in line:
+                        for part in line.split():
+                            if "x" in part and "+" in part:
+                                try:
+                                    res, x, y = part.split("+")
+                                    w, h = res.split("x")
+                                    mons.append((int(x), int(y), int(w), int(h)))
+                                    break
+                                except Exception:
+                                    pass
+                mons.sort(key=lambda m: (m[0], m[1]))
+                if 1 <= monitor <= len(mons):
+                    return mons[monitor - 1]
+        except Exception:
+            pass
+
+    try:
+        import tkinter as tk
+
+        root = tk.Tk()
+        root.withdraw()
+        w = root.winfo_screenwidth()
+        h = root.winfo_screenheight()
+        root.destroy()
+        return 0, 0, int(w), int(h)
+    except Exception:
+        return None
 
 
 def set_display_config(
