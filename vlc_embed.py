@@ -1,4 +1,4 @@
-"""Launch a fullscreen VLC window embedded in Tkinter."""
+"""Launch a VLC window attached to a specific monitor."""
 
 import sys
 import ctypes
@@ -326,25 +326,33 @@ def run(
     height: Optional[int] = None,
     monitor: int = 1,
 ) -> None:
-    """Play ``url`` in a fullscreen window with an embedded player.
+    """Play ``url`` on ``monitor`` in a Tk window.
 
-    ``x``/``y`` specify the top left corner of the embedded player within the
-    fullscreen window and ``width``/``height`` control its size.  When no
-    geometry is provided the player fills the entire screen.
+    When ``width`` and ``height`` are provided the window is positioned at
+    ``x``/``y`` relative to the top left corner of the target monitor.  If no
+    geometry is supplied the window fills the entire monitor.
     """
     global _roots, _players
     root = tk.Tk()
     _roots[monitor] = root
-    root.attributes("-fullscreen", True)
-    display_config.apply_window_geometry(root, monitor)
+
+    geom = display_config.get_monitor_geometry(monitor)
+
+    if width is None or height is None:
+        root.attributes("-fullscreen", True)
+        display_config.apply_window_geometry(root, monitor)
+    else:
+        root.overrideredirect(True)
+        gx = gy = 0
+        if geom is not None:
+            gx, gy, _, _ = geom
+        sx = gx + (int(x) if x is not None else 0)
+        sy = gy + (int(y) if y is not None else 0)
+        root.geometry(f"{int(width)}x{int(height)}+{sx}+{sy}")
+
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
-    if width and height:
-        fx = int(x) if x is not None else 0
-        fy = int(y) if y is not None else 0
-        frame.place(x=fx, y=fy, width=int(width), height=int(height))
-    else:
-        frame.pack(fill=tk.BOTH, expand=True)
+    frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
     progress_label.place(relx=0.5, rely=0.5, anchor="center")

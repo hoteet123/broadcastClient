@@ -55,6 +55,9 @@ Config messages may also include `Resolution` (e.g. `"1920x1080"`) and
 `Orientation` (0-4) fields.  When present, the client attempts to update the
 system's display settings accordingly on Windows and Linux (including
 Raspberry Pi and Orange Pi) using platform specific commands.
+`Monitor1` and `Monitor2` sections may define `VlcX`, `VlcY`, `VlcWidth`
+and `VlcHeight` values which position the VLC window on each monitor.
+If these are omitted the window fills the monitor.
 Additionally a `GuiImages` array may be provided to overlay elements on top of
 the VLC window.  Each entry should contain `ImageUrl`, `X`, `Y`, `Width`,
 `Height`, `GuiKind`, `GuiOrder` and `Monitor` values.  `GuiKind` can be

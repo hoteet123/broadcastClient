@@ -1,4 +1,4 @@
-"""Play a playlist of media items in fullscreen using VLC.
+"""Play a playlist of media items using VLC.
 
 The functions here mirror the previous standalone script behaviour but allow
 embedding the player in the current process.  ``run()`` starts playback of a
@@ -345,11 +345,11 @@ def run(
     height: Optional[int] = None,
     monitor: int = 1,
 ) -> None:
-    """Play playlist defined in ``path`` and reload when it changes.
+    """Play playlist defined in ``path`` on ``monitor``.
 
-    The player always opens a fullscreen window.  When ``width`` and ``height``
-    are supplied the VLC player is embedded at ``x``, ``y`` with the given size.
-    Otherwise the player fills the entire window.
+    When ``width`` and ``height`` are provided the window is positioned at
+    ``x``/``y`` relative to the monitor. If no geometry is supplied the
+    window fills the monitor.
     """
 
     def load() -> tuple[List, int]:
@@ -375,16 +375,24 @@ def run(
 
     root = tk.Tk()
     _roots[monitor] = root
-    root.attributes("-fullscreen", True)
-    display_config.apply_window_geometry(root, monitor)
+
+    geom = display_config.get_monitor_geometry(monitor)
+
+    if width is None or height is None:
+        root.attributes("-fullscreen", True)
+        display_config.apply_window_geometry(root, monitor)
+    else:
+        root.overrideredirect(True)
+        gx = gy = 0
+        if geom is not None:
+            gx, gy, _, _ = geom
+        sx = gx + (int(x) if x is not None else 0)
+        sy = gy + (int(y) if y is not None else 0)
+        root.geometry(f"{int(width)}x{int(height)}+{sx}+{sy}")
+
     root.configure(background="black")
     frame = tk.Frame(root, background="black")
-    if width and height:
-        fx = int(x) if x is not None else 0
-        fy = int(y) if y is not None else 0
-        frame.place(x=fx, y=fy, width=int(width), height=int(height))
-    else:
-        frame.pack(fill=tk.BOTH, expand=True)
+    frame.pack(fill=tk.BOTH, expand=True)
     progress_var = tk.StringVar()
     progress_label = tk.Label(root, textvariable=progress_var, fg="white", bg="black")
     progress_label.place(relx=0.5, rely=0.5, anchor="center")
