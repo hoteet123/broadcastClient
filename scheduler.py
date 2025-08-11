@@ -46,15 +46,19 @@ def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
         pass
 
 
-def _play_mp3_path(path: str) -> None:
-    """Play an MP3 file located at ``path`` and remove it afterwards."""
+def _play_audio_path(path: str) -> None:
+    """Play an audio file located at ``path`` and remove it afterwards."""
     if sys.platform.startswith("win"):
         def play_and_cleanup(p: str) -> None:
             try:
                 import ctypes
-                alias = f"mp3_{os.getpid()}_{threading.get_ident()}"
+                alias = f"audio_{os.getpid()}_{threading.get_ident()}"
                 mci = ctypes.windll.winmm.mciSendStringW
-                mci(f'open "{p}" type mpegvideo alias {alias}', None, 0, None)
+                if p.lower().endswith(".wav"):
+                    ftype = "waveaudio"
+                else:
+                    ftype = "mpegvideo"
+                mci(f'open "{p}" type {ftype} alias {alias}', None, 0, None)
                 mci(f'play {alias} wait', None, 0, None)
                 mci(f'close {alias}', None, 0, None)
             finally:
@@ -65,14 +69,21 @@ def _play_mp3_path(path: str) -> None:
 
         threading.Thread(target=play_and_cleanup, args=(path,), daemon=True).start()
     else:
-        command = ["mpg123", "-q", path]
+        if path.lower().endswith(".wav"):
+            command = ["aplay", "-q", path]
+        else:
+            command = ["mpg123", "-q", path]
         proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         threading.Thread(target=_cleanup_process, args=(proc, path), daemon=True).start()
 
 
-def play_mp3_file(path: str) -> None:
-    """Play an MP3 file and delete it after playback completes."""
-    _play_mp3_path(path)
+def play_audio_file(path: str) -> None:
+    """Play an audio file and delete it after playback completes."""
+    _play_audio_path(path)
+
+
+# Backwards compatibility
+play_mp3_file = play_audio_file
 
 
 def set_volume(level: int) -> None:
@@ -99,7 +110,7 @@ def play_mp3(data: bytes) -> None:
     tmp.flush()
     tmp.close()
 
-    _play_mp3_path(tmp.name)
+    _play_audio_path(tmp.name)
 
 
 async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 0.2) -> bytes:

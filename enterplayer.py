@@ -15,6 +15,7 @@ DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 import scheduler
 import tempfile
 from typing import Optional
+from urllib.parse import urlparse
 import vlc_embed
 import vlc_playlist
 import display_config
@@ -259,13 +260,18 @@ class WSClient:
         scheduler.play_mp3(audio)
 
     async def play_audio_url(self, url: str, volume: Optional[int] = None) -> None:
-        """Download an MP3 from ``url`` and play it."""
+        """Download an audio file from ``url`` and play it."""
         try:
             async with httpx.AsyncClient(timeout=120) as cli:
                 r = await cli.get(url)
                 r.raise_for_status()
 
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=RUN_DIR)
+            parsed = urlparse(url)
+            ext = os.path.splitext(parsed.path)[1].lower() or ".mp3"
+            if ext not in {".mp3", ".wav"}:
+                ext = ".mp3"
+
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext, dir=RUN_DIR)
             tmp.write(r.content)
             tmp.flush()
             tmp.close()
@@ -273,7 +279,7 @@ class WSClient:
             if volume is not None:
                 scheduler.set_volume(volume)
 
-            scheduler.play_mp3_file(tmp.name)
+            scheduler.play_audio_file(tmp.name)
         except Exception as e:  # noqa: BLE001
             print(f"Failed to play audio from {url}: {e}")
 
@@ -439,6 +445,13 @@ class WSClient:
                     volume = data.get("volume")
                     if url:
                         asyncio.create_task(self.play_audio_url(url, volume))
+                elif isinstance(data, dict) and data.get("type") == "warning-broadcast":
+                    wtype = int(data.get("warning_type", 0))
+                    text = data.get("text", "")
+                    if wtype == 1:
+                        asyncio.create_task(self.play_tts_text(text))
+                    elif wtype == 2 and text:
+                        asyncio.create_task(self.play_audio_url(text))
                 elif isinstance(data, dict) and data.get("type") == "play-tts":
                     text = data.get("text", "")
                     speed = data.get("speed", 1.0)
