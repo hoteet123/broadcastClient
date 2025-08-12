@@ -284,10 +284,17 @@ class WSClient:
             print(f"Failed to play audio from {url}: {e}")
 
     async def play_tts_text(
-        self, text: str, *, speed: float = 1.0, pitch: float = 1.0
+        self,
+        text: str,
+        *,
+        speed: float = 1.0,
+        pitch: float = 1.0,
+        volume: Optional[int] = None,
     ) -> None:
         """Fetch TTS audio for ``text`` and play it."""
         audio = await scheduler.tts_request(text, speed=speed, pitch=pitch)
+        if volume is not None:
+            scheduler.set_volume(volume)
         scheduler.play_mp3(audio)
 
     async def connect_loop(self):
@@ -448,16 +455,22 @@ class WSClient:
                 elif isinstance(data, dict) and data.get("type") == "warning-broadcast":
                     wtype = int(data.get("warning_type", 0))
                     text = data.get("text", "")
+                    volume = data.get("volume")
                     if wtype == 1:
-                        asyncio.create_task(self.play_tts_text(text))
+                        asyncio.create_task(
+                            self.play_tts_text(text, volume=volume)
+                        )
                     elif wtype == 2 and text:
-                        asyncio.create_task(self.play_audio_url(text))
+                        asyncio.create_task(self.play_audio_url(text, volume))
                 elif isinstance(data, dict) and data.get("type") == "play-tts":
                     text = data.get("text", "")
                     speed = data.get("speed", 1.0)
                     pitch = data.get("pitch", 1.0)
+                    volume = data.get("volume")
                     asyncio.create_task(
-                        self.play_tts_text(text, speed=speed, pitch=pitch)
+                        self.play_tts_text(
+                            text, speed=speed, pitch=pitch, volume=volume
+                        )
                     )
                 elif isinstance(data, dict) and data.get("type") == "play-media":
                     mid = data.get("media_id")
