@@ -11,7 +11,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 import io
 import time
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple, Any
 from PIL import Image, ImageTk, ImageSequence
 import display_config
 
@@ -92,8 +92,8 @@ def _attach_handle(player: vlc.MediaPlayer, handle: int) -> None:
 
 _roots: Dict[int, tk.Tk] = {}
 _players: Dict[int, vlc.MediaPlayer] = {}
-_gui_images: Dict[int, List[Dict[str, any]]] = {}
-_gui_entries: Dict[int, List[Dict[str, any]]] = {}
+_gui_images: Dict[int, List[Dict[str, Any]]] = {}
+_gui_entries: Dict[int, List[Dict[str, Any]]] = {}
 
 
 def fix_media_url(url: str) -> str:
@@ -111,7 +111,7 @@ def _load_image_frames(
     width: Optional[int],
     height: Optional[int],
     root: tk.Tk,
-) -> tuple[List, List]:
+) -> Tuple[List, List]:
     """Return a list of PhotoImage frames and their durations."""
     try:
         if urlparse(url).scheme in {"http", "https"}:
@@ -309,7 +309,7 @@ def _apply_gui_images(monitor: int) -> None:
         _gui_entries.setdefault(monitor, []).append(entry)
 
 
-def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
+def set_gui_images(images: List[Dict[str, Any]], monitor: int = 1) -> None:
     """Update overlay elements (images, videos, web views) for ``monitor``."""
     _gui_images[monitor] = list(images) if images else []
     root = _roots.get(monitor)

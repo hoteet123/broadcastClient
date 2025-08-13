@@ -21,7 +21,7 @@ import hashlib
 import httpx
 import io
 import time
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple, Any
 import display_config
 from PIL import Image, ImageTk, ImageSequence
 
@@ -40,8 +40,8 @@ _playlist_paths: Dict[int, str] = {}
 _items_map: Dict[int, list] = {}
 _idx_map: Dict[int, int] = {}
 _last_mtimes: Dict[int, float] = {}
-_gui_images: Dict[int, List[Dict[str, any]]] = {}
-_gui_entries: Dict[int, List[Dict[str, any]]] = {}
+_gui_images: Dict[int, List[Dict[str, Any]]] = {}
+_gui_entries: Dict[int, List[Dict[str, Any]]] = {}
 
 
 def _load_image_frames(
@@ -49,7 +49,7 @@ def _load_image_frames(
     width: Optional[int],
     height: Optional[int],
     root: tk.Tk,
-) -> tuple[List, List]:
+) -> Tuple[List, List]:
     try:
         if urlparse(url).scheme in {"http", "https"}:
             r = httpx.get(url, timeout=30)
@@ -246,7 +246,7 @@ def _apply_gui_images(monitor: int) -> None:
         _gui_entries.setdefault(monitor, []).append(entry)
 
 
-def set_gui_images(images: List[Dict[str, any]], monitor: int = 1) -> None:
+def set_gui_images(images: List[Dict[str, Any]], monitor: int = 1) -> None:
     """Update overlay elements (images, videos, web views) for ``monitor``."""
     _gui_images[monitor] = list(images) if images else []
     root = _roots.get(monitor)
@@ -352,7 +352,7 @@ def run(
     Otherwise the player fills the entire window.
     """
 
-    def load() -> tuple[List, int]:
+    def load() -> Tuple[List, int]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
