@@ -305,7 +305,13 @@ class WSClient:
             )
             try:
                 self.update_status("Connecting…")
-                async with websockets.connect(ws_url, ping_interval=None, max_size=1 << 20) as ws:
+                async with websockets.connect(
+                    ws_url,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    close_timeout=5,
+                    max_size=1 << 20,
+                ) as ws:
                     self.update_status("Connected")
                     backoff = 1
                     await self.handle_ws(ws)
