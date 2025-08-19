@@ -130,11 +130,23 @@ async def tts_request(text: str, *, speed: float = 1.0, pitch: float = 0.2) -> b
 
 
 def parse_days(mask: int) -> List[int]:
-    """Return a list of weekday numbers from mask. Monday=0"""
-    days = []
+    """Return a list of weekday numbers from ``mask``.
+
+    The server represents days using a bit mask with Sunday as the least
+    significant bit (value ``1``). ``datetime.weekday()`` uses ``0`` for
+    Monday, so adjust the mapping accordingly and gracefully handle non-int
+    masks.
+    """
+
+    days: List[int] = []
+    try:
+        mask_int = int(mask)
+    except Exception:
+        return days
+
     for i in range(7):
-        if mask & (1 << i):
-            days.append(i)
+        if mask_int & (1 << i):
+            days.append((i + 6) % 7)
     return days
 
 
