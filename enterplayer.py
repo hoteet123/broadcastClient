@@ -349,8 +349,10 @@ class WSClient:
         try:
             await ws.send(json.dumps({"hello": "world", "mac": MAC_ADDRESS}))
 
-            # 서버 설정을 받은 뒤 스케줄을 불러온다
+            # 연결 직후에도 예약 방송을 확인한다.
+            await self.update_schedules()
 
+            # 이후에는 서버 설정 변경등의 메시지를 처리한다.
             while not self.stop_event.is_set():
                 msg = await ws.recv()
                 try:
