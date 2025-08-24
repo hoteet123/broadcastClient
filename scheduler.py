@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+HOST_URL = "https://pc.flexx.kr:65000"
+
 # When packaged as a single executable on Windows, ``__file__`` points to a
 # temporary extraction directory. Use ``sys.argv[0]`` so ``client.cfg`` is
 # loaded from the executable's directory.
@@ -26,7 +28,7 @@ RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 def load_config() -> Dict[str, Any]:
     if not CFG_PATH.exists():
         sample = {
-            "HOST": "http://example.com:65000",
+            "HOST": HOST_URL,
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
         }
@@ -34,7 +36,11 @@ def load_config() -> Dict[str, Any]:
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
         sys.exit(1)
     with CFG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    if cfg.get("HOST") != HOST_URL:
+        cfg["HOST"] = HOST_URL
+        CFG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
 
 
 def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
