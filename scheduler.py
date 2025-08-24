@@ -22,11 +22,13 @@ else:
 # Directory to store temporary media next to the running executable/script
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 
+HOST = "https://pc.flexx.kr:65000"
+
 
 def load_config() -> Dict[str, Any]:
     if not CFG_PATH.exists():
         sample = {
-            "HOST": "http://example.com:65000",
+            "HOST": HOST,
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
         }
@@ -34,7 +36,10 @@ def load_config() -> Dict[str, Any]:
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
         sys.exit(1)
     with CFG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    cfg["HOST"] = HOST
+    CFG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
 
 
 def _cleanup_process(proc: subprocess.Popen, path: str) -> None:
@@ -158,9 +163,8 @@ def compute_next_run(sch: Dict[str, Any], base: Optional[dt.datetime] = None) ->
 
 
 async def fetch_schedules(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    base_url = cfg["HOST"].rstrip("/")
     headers = {"X-API-Key": cfg["API_KEY"]}
-    async with httpx.AsyncClient(base_url=base_url, http2=True, timeout=5.0) as cli:
+    async with httpx.AsyncClient(base_url=HOST, http2=True, timeout=5.0) as cli:
         r = await cli.get("/broadcast-schedules", headers=headers)
         r.raise_for_status()
         data = r.json()

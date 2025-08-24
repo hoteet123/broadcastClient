@@ -20,6 +20,8 @@ import vlc_embed
 import vlc_playlist
 import display_config
 
+HOST_URL = "https://pc.flexx.kr:65000"
+
 # Directory where the script or executable is running
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 
@@ -61,7 +63,7 @@ def get_mac_address() -> str:
 def load_config():
     if not CFG_PATH.exists():
         sample = {
-            "HOST": "http://example.com:65000",
+            "HOST": HOST_URL,
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
             "MAC_ADDRESS": get_mac_address(),
@@ -70,7 +72,10 @@ def load_config():
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
         sys.exit(1)
     with CFG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    cfg["HOST"] = HOST_URL
+    save_config(cfg)
+    return cfg
 
 
 def save_config(config: dict) -> None:
@@ -79,7 +84,7 @@ def save_config(config: dict) -> None:
 
 
 cfg = load_config()
-HOST = cfg["HOST"].rstrip("/")
+HOST = HOST_URL.rstrip("/")
 API_KEY = cfg["API_KEY"]
 DEVICE_ID = cfg["DEVICE_ID"]
 if cfg.get("MAC_ADDRESS"):
