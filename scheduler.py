@@ -171,9 +171,33 @@ async def scheduler_loop(
     schedules: List[Dict[str, Any]], stop_event: Optional[threading.Event] = None
 ) -> None:
     """Run scheduled playback based on a list of schedule dictionaries."""
+    async def _run_schedule(sch: Dict[str, Any]) -> None:
+        """Execute a single schedule without blocking the main loop."""
+        now = dt.datetime.now()
+        try:
+            print(
+                f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}"
+            )
+            audio = await tts_request(
+                sch.get("TTSContent", ""),
+                speed=sch.get("Speed", 1.0),
+                pitch=sch.get("Pitch", 1.0),
+            )
+            play_mp3(audio)
+            sch["last_run"] = now
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to play schedule {sch.get('ScheduleID')}: {e}")
+        finally:
+            sch["next_run"] = compute_next_run(
+                sch, now + dt.timedelta(seconds=1)
+            )
+
     for sch in schedules:
         sch["next_run"] = compute_next_run(sch)
         sch["last_run"] = None
+
+    pending_tasks: set[asyncio.Task] = set()
+
     while True:
         if stop_event and stop_event.is_set():
             break
@@ -183,25 +207,14 @@ async def scheduler_loop(
             if nr and nr <= now:
                 last = sch.get("last_run")
                 if last and last.date() == now.date():
-                    sch["next_run"] = compute_next_run(sch, now + dt.timedelta(seconds=1))
-                    continue
-                try:
-                    print(
-                        f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}"
-                    )
-                    audio = await tts_request(
-                        sch.get("TTSContent", ""),
-                        speed=sch.get("Speed", 1.0),
-                        pitch=sch.get("Pitch", 1.0),
-                    )
-                    play_mp3(audio)
-                    sch["last_run"] = now
-                except Exception as e:  # noqa: BLE001
-                    print(f"Failed to play schedule {sch.get('ScheduleID')}: {e}")
-                finally:
                     sch["next_run"] = compute_next_run(
                         sch, now + dt.timedelta(seconds=1)
                     )
+                    continue
+                sch["next_run"] = None
+                task = asyncio.create_task(_run_schedule(sch))
+                pending_tasks.add(task)
+                task.add_done_callback(pending_tasks.discard)
         await asyncio.sleep(1)
 
 
