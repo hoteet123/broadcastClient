@@ -27,7 +27,7 @@ systems where `h2` is missing.
 
 ## Running
 
-Edit `client.cfg` with your `API_KEY` and `DEVICE_ID` (the server address is fixed to `https://pc.flexx.kr:65000`), then run:
+Edit `client.cfg` with your `API_KEY` and `DEVICE_ID` (the server address is fixed to `https://api.flexx.kr:65000`), then run:
 
 ```bash
 python enterplayer.py

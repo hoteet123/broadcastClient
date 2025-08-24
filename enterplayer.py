@@ -20,7 +20,7 @@ import vlc_embed
 import vlc_playlist
 import display_config
 
-HOST_URL = "https://pc.flexx.kr:65000"
+HOST_URL = "https://api.flexx.kr:65000"
 
 # Directory where the script or executable is running
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent

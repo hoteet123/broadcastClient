@@ -22,7 +22,7 @@ else:
 # Directory to store temporary media next to the running executable/script
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 
-HOST = "https://pc.flexx.kr:65000"
+HOST = "https://api.flexx.kr:65000"
 
 
 def load_config() -> Dict[str, Any]:
