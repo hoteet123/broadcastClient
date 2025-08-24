@@ -160,7 +160,7 @@ def compute_next_run(sch: Dict[str, Any], base: Optional[dt.datetime] = None) ->
 async def fetch_schedules(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     base_url = cfg["HOST"].rstrip("/")
     headers = {"X-API-Key": cfg["API_KEY"]}
-    async with httpx.AsyncClient(base_url=base_url, http2=True, timeout=5.0) as cli:
+    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as cli:
         r = await cli.get("/broadcast-schedules", headers=headers)
         r.raise_for_status()
         data = r.json()
