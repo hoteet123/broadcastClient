@@ -139,19 +139,39 @@ def parse_days(mask: int) -> List[int]:
 
 
 def compute_next_run(sch: Dict[str, Any], base: Optional[dt.datetime] = None) -> Optional[dt.datetime]:
-    base = base or dt.datetime.now()
+    """Return the next datetime this schedule should run in local time."""
+
+    # ``dt.datetime.now()`` returns a naive datetime which can lead to
+    # comparison issues when ``ScheduledTime`` includes a timezone offset.
+    # ``astimezone()`` normalises it to the local zone and produces a
+    # timezone-aware datetime.
+    if base is None:
+        base = dt.datetime.now(dt.timezone.utc).astimezone()
+    elif base.tzinfo is None:
+        base = base.replace(tzinfo=dt.timezone.utc).astimezone()
+
     time_part = dt.time.fromisoformat(sch["ScheduledTime"])
+    if time_part.tzinfo is None:
+        time_part = time_part.replace(tzinfo=base.tzinfo)
+
+    def _normalize(when: dt.datetime) -> dt.datetime:
+        if when.tzinfo is None:
+            return when.replace(tzinfo=base.tzinfo)
+        return when.astimezone(base.tzinfo)
+
     if sch.get("ScheduledDate"):
         day = dt.date.fromisoformat(sch["ScheduledDate"])
-        when = dt.datetime.combine(day, time_part)
+        when = _normalize(dt.datetime.combine(day, time_part))
         return when if when >= base else None
+
     days = parse_days(sch.get("DaysOfWeekMask", 0))
     if not days:
         days = list(range(7))
+
     for i in range(7):
         day = base.date() + dt.timedelta(days=i)
         if day.weekday() in days:
-            when = dt.datetime.combine(day, time_part)
+            when = _normalize(dt.datetime.combine(day, time_part))
             if when >= base:
                 return when
     return None
@@ -177,7 +197,7 @@ async def scheduler_loop(
     while True:
         if stop_event and stop_event.is_set():
             break
-        now = dt.datetime.now()
+        now = dt.datetime.now(dt.timezone.utc).astimezone()
         for sch in schedules:
             nr = sch.get("next_run")
             if nr and nr <= now:
