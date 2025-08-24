@@ -23,6 +23,8 @@ import display_config
 # Directory where the script or executable is running
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
 
+HOST_URL = "https://pc.flexx.kr:65000"
+
 """Simple Tk GUI client with a system tray icon.
 
 서버 연결 후 `/broadcast-schedules` 를 호출해 방송 예약 목록을 출력한다.
@@ -61,7 +63,7 @@ def get_mac_address() -> str:
 def load_config():
     if not CFG_PATH.exists():
         sample = {
-            "HOST": "http://example.com:65000",
+            "HOST": HOST_URL,
             "API_KEY": "",
             "DEVICE_ID": "PC-CLIENT",
             "MAC_ADDRESS": get_mac_address(),
@@ -70,7 +72,11 @@ def load_config():
         print(f"Created {CFG_PATH}. Fill in API_KEY and run again.")
         sys.exit(1)
     with CFG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    if cfg.get("HOST") != HOST_URL:
+        cfg["HOST"] = HOST_URL
+        CFG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return cfg
 
 
 def save_config(config: dict) -> None:
