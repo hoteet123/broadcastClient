@@ -336,6 +336,16 @@ class WSClient:
 
         self.schedules = list(schedules)
 
+        if self.schedules:
+            print("[Scheduler] fetched schedules:")
+            for sch in self.schedules:
+                next_run = scheduler.compute_next_run(sch)
+                print(
+                    f"  ID {sch.get('ScheduleID')} next at {next_run}: {sch.get('Title')}"
+                )
+        else:
+            print("[Scheduler] no schedules received")
+
         if start_scheduler and self.schedules and self.device_enabled:
             self.scheduler_stop_event = threading.Event()
             self.scheduler_thread = threading.Thread(

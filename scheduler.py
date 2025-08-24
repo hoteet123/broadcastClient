@@ -174,6 +174,9 @@ async def scheduler_loop(
     for sch in schedules:
         sch["next_run"] = compute_next_run(sch)
         sch["last_run"] = None
+        print(
+            f"Schedule {sch.get('ScheduleID')} ({sch.get('Title')}) next at {sch['next_run']}"
+        )
     while True:
         if stop_event and stop_event.is_set():
             break
@@ -183,7 +186,12 @@ async def scheduler_loop(
             if nr and nr <= now:
                 last = sch.get("last_run")
                 if last and last.date() == now.date():
-                    sch["next_run"] = compute_next_run(sch, now + dt.timedelta(seconds=1))
+                    sch["next_run"] = compute_next_run(
+                        sch, now + dt.timedelta(seconds=1)
+                    )
+                    print(
+                        f"Schedule {sch.get('ScheduleID')} rescheduled to {sch['next_run']}"
+                    )
                     continue
                 try:
                     print(
@@ -201,6 +209,9 @@ async def scheduler_loop(
                 finally:
                     sch["next_run"] = compute_next_run(
                         sch, now + dt.timedelta(seconds=1)
+                    )
+                    print(
+                        f"Next run for schedule {sch.get('ScheduleID')} at {sch['next_run']}"
                     )
         await asyncio.sleep(1)
 
