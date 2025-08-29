@@ -133,6 +133,9 @@ class WSClient:
         self.gui_images = []
         self.gui_images_by_monitor = {1: [], 2: []}
         self.last_update_time = 0.0
+        self.vnc_enabled = False
+        self.vnc_port: Optional[int] = None
+        self.vnc_password: Optional[str] = None
 
     def start(self):
         self.thread.start()
@@ -144,6 +147,7 @@ class WSClient:
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
         self.stop_vlc()
+        self.stop_vnc_server()
 
     def start_vlc(self, url: Optional[str] = None, monitor: int = 1) -> None:
         """Launch VLC to play ``url`` on ``monitor`` using a thread."""
@@ -239,6 +243,42 @@ class WSClient:
                 mon["playlist_path"] = None
             vlc_embed.set_gui_images([], m)
             vlc_playlist.set_gui_images([], m)
+
+    def start_vnc_server(self, port: Optional[int], password: str) -> None:
+        exe = RUN_DIR / "sdk" / "vnc" / "TightVncOpen.exe"
+        if not exe.exists():
+            exe = RUN_DIR / "etc" / "vncserver" / "TightVncOpen.exe"
+        if not exe.exists():
+            print(f"VNC server executable not found: {exe}")
+            return
+        env = os.environ.copy()
+        if port:
+            env["VNC_PORT"] = str(port)
+        try:
+            subprocess.Popen(
+                [str(exe), str(password), str(password)],
+                cwd=str(exe.parent),
+                env=env,
+            )
+            self.vnc_enabled = True
+            self.vnc_port = port
+            self.vnc_password = password
+        except Exception as e:
+            print(f"Failed to start VNC server: {e}")
+
+    def stop_vnc_server(self) -> None:
+        exe = RUN_DIR / "sdk" / "vnc" / "tvnserver.exe"
+        if not exe.exists():
+            exe = RUN_DIR / "etc" / "vncserver" / "tvnserver.exe"
+        if not exe.exists():
+            return
+        try:
+            subprocess.Popen([str(exe), "-kill"], cwd=str(exe.parent))
+        except Exception as e:
+            print(f"Failed to stop VNC server: {e}")
+        self.vnc_enabled = False
+        self.vnc_port = None
+        self.vnc_password = None
 
     def launch_updater(self) -> None:
         exe = RUN_DIR / "EnterPlayer_AutoUpdate.exe"
@@ -390,6 +430,27 @@ class WSClient:
                         self.device_id = str(dev_id)
                         cfg["DEVICE_ID"] = str(dev_id)
                         save_config(cfg)
+                    vnc_enabled = data.get("VncEnabled")
+                    vnc_password = data.get("VncPassword")
+                    vnc_port = data.get("VncPort")
+                    if isinstance(vnc_enabled, str):
+                        vnc_enabled = vnc_enabled.lower() in {"1", "true", "yes"}
+                    else:
+                        vnc_enabled = bool(vnc_enabled)
+                    try:
+                        vnc_port = int(vnc_port) if vnc_port is not None else None
+                    except Exception:
+                        vnc_port = None
+                    if vnc_enabled and vnc_password:
+                        if (
+                            not self.vnc_enabled
+                            or self.vnc_port != vnc_port
+                            or self.vnc_password != str(vnc_password)
+                        ):
+                            self.start_vnc_server(vnc_port, str(vnc_password))
+                    else:
+                        if self.vnc_enabled:
+                            self.stop_vnc_server()
                     res = data.get("Resolution") or data.get("resolution")
                     orient = data.get("Orientation")
                     if res or orient is not None:
