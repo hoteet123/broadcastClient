@@ -24,6 +24,10 @@ HOST_URL = "https://api.flexx.kr:65000"
 
 # Directory where the script or executable is running
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
+# When packaged by PyInstaller, data files such as the VNC binaries are
+# extracted to ``sys._MEIPASS``. Use that as the base directory for bundled
+# resources while falling back to ``RUN_DIR`` when running from sources.
+BUNDLE_DIR = pathlib.Path(getattr(sys, "_MEIPASS", RUN_DIR))
 
 """Simple Tk GUI client with a system tray icon.
 
@@ -244,12 +248,22 @@ class WSClient:
             vlc_embed.set_gui_images([], m)
             vlc_playlist.set_gui_images([], m)
 
+    def _find_vnc_exe(self, name: str) -> Optional[pathlib.Path]:
+        """Locate a VNC executable bundled with the application."""
+        candidates = [
+            BUNDLE_DIR / "sdk" / "vnc" / name,
+            RUN_DIR / "sdk" / "vnc" / name,
+            RUN_DIR / "etc" / "vncserver" / name,
+        ]
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
     def start_vnc_server(self, port: Optional[int], password: str) -> None:
-        exe = RUN_DIR / "sdk" / "vnc" / "TightVncOpen.exe"
-        if not exe.exists():
-            exe = RUN_DIR / "etc" / "vncserver" / "TightVncOpen.exe"
-        if not exe.exists():
-            print(f"VNC server executable not found: {exe}")
+        exe = self._find_vnc_exe("TightVncOpen.exe")
+        if not exe:
+            print("VNC server executable not found")
             return
         env = os.environ.copy()
         if port:
@@ -267,10 +281,8 @@ class WSClient:
             print(f"Failed to start VNC server: {e}")
 
     def stop_vnc_server(self) -> None:
-        exe = RUN_DIR / "sdk" / "vnc" / "tvnserver.exe"
-        if not exe.exists():
-            exe = RUN_DIR / "etc" / "vncserver" / "tvnserver.exe"
-        if not exe.exists():
+        exe = self._find_vnc_exe("tvnserver.exe")
+        if not exe:
             return
         try:
             subprocess.Popen([str(exe), "-kill"], cwd=str(exe.parent))
