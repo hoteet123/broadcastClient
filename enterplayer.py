@@ -133,6 +133,7 @@ class WSClient:
         self.gui_images = []
         self.gui_images_by_monitor = {1: [], 2: []}
         self.last_update_time = 0.0
+        self.vnc_running = False
 
     def start(self):
         self.thread.start()
@@ -144,6 +145,7 @@ class WSClient:
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
         self.stop_vlc()
+        self.stop_vnc_server()
 
     def start_vlc(self, url: Optional[str] = None, monitor: int = 1) -> None:
         """Launch VLC to play ``url`` on ``monitor`` using a thread."""
@@ -239,6 +241,42 @@ class WSClient:
                 mon["playlist_path"] = None
             vlc_embed.set_gui_images([], m)
             vlc_playlist.set_gui_images([], m)
+
+    def start_vnc_server(self, port: int, password: str) -> None:
+        exe = RUN_DIR / "etc" / "vncserver" / "TightVncOpen.exe"
+        if not exe.exists():
+            exe = RUN_DIR / "sdk" / "vnc" / "TightVncOpen.exe"
+        if not exe.exists():
+            print("VNC executable not found")
+            return
+        if self.vnc_running:
+            self.stop_vnc_server()
+        args = [str(exe), str(password), str(password), str(port)]
+        try:
+            subprocess.Popen(args, cwd=str(exe.parent))
+            self.vnc_running = True
+        except Exception as e:
+            print(f"Failed to start VNC server: {e}")
+
+    def stop_vnc_server(self) -> None:
+        self.vnc_running = False
+        try:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/IM", "tvnserver.exe", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            else:
+                subprocess.run(
+                    ["pkill", "-f", "tvnserver"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+        except Exception:
+            pass
 
     def launch_updater(self) -> None:
         exe = RUN_DIR / "EnterPlayer_AutoUpdate.exe"
@@ -435,6 +473,22 @@ class WSClient:
                             vlc_playlist.set_gui_images(
                                 self.gui_images_by_monitor.get(idx, []), idx
                             )
+                    vnc_enabled = data.get("VncEnabled")
+                    if isinstance(vnc_enabled, str):
+                        vnc_enabled = vnc_enabled.lower() in {"1", "true", "yes"}
+                    else:
+                        vnc_enabled = bool(vnc_enabled)
+                    if vnc_enabled:
+                        vnc_port = data.get("VncPort", 5900)
+                        try:
+                            vnc_port = int(vnc_port)
+                        except Exception:
+                            vnc_port = 5900
+                        vnc_pass = data.get("VncPassword")
+                        if vnc_pass:
+                            self.start_vnc_server(vnc_port, str(vnc_pass))
+                    else:
+                        self.stop_vnc_server()
                     self.device_enabled = enabled
                     if not self.device_enabled:
                         self.update_status("사용안함")
