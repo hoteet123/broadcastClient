@@ -266,7 +266,6 @@ class WSClient:
         if port is not None:
             env["VNC_PORT"] = str(port)
 
-        # Configure passwords first via TightVncOpen.exe
         open_exe = self._find_vnc_exe("TightVncOpen.exe")
         if not open_exe:
             print("VNC server executable not found")
@@ -278,17 +277,6 @@ class WSClient:
                 env=env,
                 check=True,
             )
-        except Exception as e:
-            print(f"Failed to configure VNC server: {e}")
-            return
-
-        # Then launch the actual server process
-        server_exe = self._find_vnc_exe("tvnserver.exe")
-        if not server_exe:
-            print("tvnserver executable not found")
-            return
-        try:
-            subprocess.Popen([str(server_exe)], cwd=str(server_exe.parent), env=env)
             self.vnc_enabled = True
             self.vnc_port = port
             self.vnc_password = password
@@ -296,14 +284,19 @@ class WSClient:
             print(f"Failed to start VNC server: {e}")
 
     def stop_vnc_server(self) -> None:
-        exe = self._find_vnc_exe("tvnserver.exe")
+        exe = self._find_vnc_exe("TightVncOpen.exe")
         if not exe:
             return
         env = os.environ.copy()
         if self.vnc_port is not None:
             env["VNC_PORT"] = str(self.vnc_port)
         try:
-            subprocess.Popen([str(exe), "-kill"], cwd=str(exe.parent), env=env)
+            subprocess.run(
+                [str(exe), "-kill"],
+                cwd=str(exe.parent),
+                env=env,
+                check=True,
+            )
         except Exception as e:
             print(f"Failed to stop VNC server: {e}")
         self.vnc_enabled = False
