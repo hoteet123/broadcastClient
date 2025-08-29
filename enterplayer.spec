@@ -7,7 +7,7 @@ a = Analysis(
     ['enterplayer.py', 'vlc_embed.py', 'vlc_playlist.py', 'scheduler.py', 'display_config.py'],
     pathex=['.'],          # 프로젝트 루트(필요하면 절대경로로 수정)
     binaries=[],           # 추가 DLL/EXE가 있으면 [('src', 'dest')] 형식으로 지정
-    datas=[],              # 리소스 파일 있으면 [('src/*', 'dest')] 식으로 지정
+    datas=[('sdk', 'sdk')],              # 리소스 파일 있으면 [('src/*', 'dest')] 식으로 지정
     hiddenimports=[],      # 동적 import 모듈은 여기에
     hookspath=[],
     hooksconfig={},
