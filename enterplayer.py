@@ -261,19 +261,34 @@ class WSClient:
         return None
 
     def start_vnc_server(self, port: Optional[int], password: str) -> None:
-        exe = self._find_vnc_exe("TightVncOpen.exe")
-        if not exe:
+        """Launch TightVNC using bundled executables."""
+        env = os.environ.copy()
+        if port is not None:
+            env["VNC_PORT"] = str(port)
+
+        # Configure passwords first via TightVncOpen.exe
+        open_exe = self._find_vnc_exe("TightVncOpen.exe")
+        if not open_exe:
             print("VNC server executable not found")
             return
-        env = os.environ.copy()
-        if port:
-            env["VNC_PORT"] = str(port)
         try:
-            subprocess.Popen(
-                [str(exe), str(password), str(password)],
-                cwd=str(exe.parent),
+            subprocess.run(
+                [str(open_exe), str(password), str(password)],
+                cwd=str(open_exe.parent),
                 env=env,
+                check=True,
             )
+        except Exception as e:
+            print(f"Failed to configure VNC server: {e}")
+            return
+
+        # Then launch the actual server process
+        server_exe = self._find_vnc_exe("tvnserver.exe")
+        if not server_exe:
+            print("tvnserver executable not found")
+            return
+        try:
+            subprocess.Popen([str(server_exe)], cwd=str(server_exe.parent), env=env)
             self.vnc_enabled = True
             self.vnc_port = port
             self.vnc_password = password
@@ -284,8 +299,11 @@ class WSClient:
         exe = self._find_vnc_exe("tvnserver.exe")
         if not exe:
             return
+        env = os.environ.copy()
+        if self.vnc_port is not None:
+            env["VNC_PORT"] = str(self.vnc_port)
         try:
-            subprocess.Popen([str(exe), "-kill"], cwd=str(exe.parent))
+            subprocess.Popen([str(exe), "-kill"], cwd=str(exe.parent), env=env)
         except Exception as e:
             print(f"Failed to stop VNC server: {e}")
         self.vnc_enabled = False
