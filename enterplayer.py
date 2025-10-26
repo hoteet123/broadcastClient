@@ -9,18 +9,25 @@ import pathlib
 import os
 import subprocess
 import time
+import logging
 
 DEFAULT_URL = "http://nas.3no.kr/test.mp4"
 
 import scheduler
 import tempfile
-from typing import Optional
+from typing import Any, Callable, Coroutine, Optional
 from urllib.parse import urlparse
 import vlc_embed
 import vlc_playlist
 import display_config
 
 HOST_URL = "https://api.flexx.kr:65000"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("enterplayer")
 
 # Directory where the script or executable is running
 RUN_DIR = pathlib.Path(sys.argv[0]).resolve().parent
@@ -96,8 +103,18 @@ else:
 
 
 class WSClient:
-    def __init__(self, update_status):
+    def __init__(
+        self,
+        update_status: Callable[[str], None],
+        *,
+        on_schedules_updated: Optional[Callable[[list], None]] = None,
+        on_message: Optional[Callable[[str, bool], None]] = None,
+        on_test_broadcast_status: Optional[Callable[[Optional[int], bool, str], None]] = None,
+    ) -> None:
         self.update_status = update_status
+        self.on_schedules_updated = on_schedules_updated
+        self.on_message = on_message
+        self.on_test_broadcast_status = on_test_broadcast_status
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.scheduler_thread = None
@@ -106,6 +123,8 @@ class WSClient:
         self.playlist_items = []
         self.device_id = DEVICE_ID
         self.device_enabled = True
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.loop_ready = threading.Event()
         self.monitors = {
             1: {
                 "vlc_thread": None,
@@ -134,6 +153,29 @@ class WSClient:
         self.gui_images_by_monitor = {1: [], 2: []}
         self.last_update_time = 0.0
 
+    def _notify_schedules(self, schedules: list) -> None:
+        if self.on_schedules_updated:
+            try:
+                self.on_schedules_updated(schedules)
+            except Exception:  # noqa: BLE001
+                logger.exception("Schedule update callback failed")
+
+    def _notify_message(self, message: str, error: bool = False) -> None:
+        if self.on_message:
+            try:
+                self.on_message(message, error)
+            except Exception:  # noqa: BLE001
+                logger.exception("Message callback failed")
+
+    def _notify_test_status(
+        self, schedule_id: Optional[int], success: bool, message: str
+    ) -> None:
+        if self.on_test_broadcast_status:
+            try:
+                self.on_test_broadcast_status(schedule_id, success, message)
+            except Exception:  # noqa: BLE001
+                logger.exception("Test status callback failed")
+
     def start(self):
         self.thread.start()
 
@@ -144,6 +186,32 @@ class WSClient:
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=1)
         self.stop_vlc()
+
+    def _run_in_loop(
+        self, coro: Coroutine[Any, Any, Any], description: str
+    ) -> None:
+        if not self.loop_ready.wait(timeout=5):
+            self._notify_message(
+                "네트워크 연결을 준비 중입니다. 잠시 후 다시 시도해 주세요.",
+                error=True,
+            )
+            return
+        loop = self.loop
+        if not loop:
+            self._notify_message("이벤트 루프가 초기화되지 않았습니다.", error=True)
+            return
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+        def _on_done(fut: asyncio.Future) -> None:
+            try:
+                fut.result()
+            except Exception:  # noqa: BLE001
+                logger.exception("Error while running %s", description)
+                self._notify_message(
+                    f"작업 중 오류가 발생했습니다: {description}", error=True
+                )
+
+        future.add_done_callback(_on_done)
 
     def start_vlc(self, url: Optional[str] = None, monitor: int = 1) -> None:
         """Launch VLC to play ``url`` on ``monitor`` using a thread."""
@@ -253,7 +321,14 @@ class WSClient:
     def run(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.connect_loop())
+        self.loop = loop
+        self.loop_ready.set()
+        try:
+            loop.run_until_complete(self.connect_loop())
+        finally:
+            self.loop_ready.clear()
+            self.loop = None
+            loop.close()
 
     async def play_schedule(self, sch: dict) -> None:
         """Fetch TTS audio for a schedule and play it."""
@@ -320,8 +395,12 @@ class WSClient:
                     self.update_status("Connected")
                     backoff = 1
                     await self.handle_ws(ws)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("WebSocket connection error: %s", exc)
                 self.update_status(f"Disconnected: retry in {backoff}s")
+                self._notify_message(
+                    "서버 연결이 끊어져 재시도합니다.", error=True
+                )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60)
 
@@ -332,7 +411,27 @@ class WSClient:
         """
         if start_scheduler is None:
             start_scheduler = self.playmode != 2
-        schedules = await scheduler.fetch_schedules(cfg)
+        try:
+            schedules = await scheduler.fetch_schedules(cfg)
+        except httpx.HTTPStatusError as exc:
+            logger.error("Failed to fetch schedules: %s", exc)
+            self._notify_message(
+                "예약 정보를 불러오지 못했습니다. (서버 오류)", error=True
+            )
+            return
+        except httpx.HTTPError as exc:
+            logger.error("Failed to fetch schedules: %s", exc)
+            self._notify_message(
+                "네트워크 오류로 예약 정보를 불러오지 못했습니다.", error=True
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Unexpected error while fetching schedules: %s", exc)
+            self._notify_message(
+                "예약 정보를 불러오는 중 알 수 없는 오류가 발생했습니다.",
+                error=True,
+            )
+            return
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             if self.scheduler_stop_event:
                 self.scheduler_stop_event.set()
@@ -340,6 +439,19 @@ class WSClient:
             self.scheduler_thread = None
 
         self.schedules = list(schedules)
+        logger.info("Fetched %d schedules", len(self.schedules))
+        if self.schedules:
+            logger.info(
+                "Schedule fields: %s",
+                ", ".join(sorted(str(k) for k in self.schedules[0].keys())),
+            )
+        self._notify_schedules(self.schedules)
+        if self.schedules:
+            self._notify_message(
+                f"예약 {len(self.schedules)}건을 불러왔습니다.", error=False
+            )
+        else:
+            self._notify_message("등록된 예약이 없습니다.", error=False)
 
         if start_scheduler and self.schedules and self.device_enabled:
             self.scheduler_stop_event = threading.Event()
@@ -350,34 +462,151 @@ class WSClient:
             )
             self.scheduler_thread.start()
 
+    def refresh_schedules(self) -> None:
+        self._notify_message("예약 목록을 새로 고치는 중입니다…", error=False)
+        self._run_in_loop(
+            self.update_schedules(start_scheduler=None), "refresh schedules"
+        )
+
+    def request_test_broadcast(self, schedule_id: Optional[int]) -> None:
+        if schedule_id is None:
+            self._notify_message("선택된 예약이 없습니다.", error=True)
+            return
+        try:
+            sid = int(schedule_id)
+        except (TypeError, ValueError):
+            self._notify_message("잘못된 예약 ID 입니다.", error=True)
+            return
+        self._notify_message("테스트 방송을 요청하는 중입니다…", error=False)
+        self._run_in_loop(
+            self._post_test_broadcast(sid), f"test broadcast request #{sid}"
+        )
+
+    async def _post_test_broadcast(self, schedule_id: int) -> None:
+        logger.info("Requesting test broadcast for schedule %s", schedule_id)
+        headers = {"X-API-Key": API_KEY}
+        params = {"mac": MAC_ADDRESS}
+        try:
+            async with httpx.AsyncClient(
+                base_url=HOST, http2=True, timeout=10.0
+            ) as cli:
+                response = await cli.post(
+                    f"/broadcast-schedules/{schedule_id}/test",
+                    params=params,
+                    headers=headers,
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error("Test broadcast request failed: %s", exc)
+            self._notify_test_status(
+                schedule_id, False, "테스트 방송 요청이 거절되었습니다."
+            )
+            self._notify_message("테스트 방송 요청이 거절되었습니다.", error=True)
+        except httpx.HTTPError as exc:
+            logger.error("Test broadcast request failed: %s", exc)
+            self._notify_test_status(
+                schedule_id, False, "테스트 방송 요청 중 네트워크 오류가 발생했습니다."
+            )
+            self._notify_message(
+                "네트워크 오류로 테스트 방송 요청에 실패했습니다.", error=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Unexpected error during test broadcast request: %s", exc)
+            self._notify_test_status(
+                schedule_id, False, "테스트 방송 요청 중 알 수 없는 오류가 발생했습니다."
+            )
+            self._notify_message(
+                "테스트 방송 요청 중 오류가 발생했습니다.", error=True
+            )
+        else:
+            self._notify_test_status(
+                schedule_id, True, "테스트 방송 요청을 서버에 전달했습니다."
+            )
+            self._notify_message("테스트 방송 요청을 전송했습니다.", error=False)
+
+    def request_play_tts(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            self._notify_message("재생할 문장을 입력해 주세요.", error=True)
+            return
+        if len(text) > 2000:
+            self._notify_message("문장이 너무 깁니다. 2000자 이하로 입력해 주세요.", error=True)
+            return
+        self._notify_message("즉시 재생 TTS를 요청하는 중입니다…", error=False)
+        self._run_in_loop(self._post_play_tts(text), "play TTS request")
+
+    async def _post_play_tts(self, text: str) -> None:
+        logger.info("Requesting immediate TTS playback (%d chars)", len(text))
+        headers = {
+            "X-API-Key": API_KEY,
+            "Content-Type": "text/plain; charset=utf-8",
+        }
+        params = {"mac": MAC_ADDRESS}
+        try:
+            async with httpx.AsyncClient(
+                base_url=HOST, http2=True, timeout=10.0
+            ) as cli:
+                response = await cli.post(
+                    "/broadcasts/play-tts",
+                    params=params,
+                    headers=headers,
+                    content=text.encode("utf-8"),
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error("Immediate TTS request failed: %s", exc)
+            self._notify_message(
+                "TTS 재생 요청이 거절되었습니다. 입력 값을 확인해 주세요.",
+                error=True,
+            )
+        except httpx.HTTPError as exc:
+            logger.error("Immediate TTS request failed: %s", exc)
+            self._notify_message(
+                "네트워크 오류로 TTS 재생을 요청하지 못했습니다.", error=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Unexpected error during TTS request: %s", exc)
+            self._notify_message("TTS 재생 요청 중 오류가 발생했습니다.", error=True)
+        else:
+            self._notify_message("TTS 재생 요청을 전송했습니다.", error=False)
+
     async def handle_ws(self, ws):
         try:
             await ws.send(json.dumps({"hello": "world", "mac": MAC_ADDRESS}))
+            logger.info("Sent hello handshake over WebSocket")
 
             # 서버 설정을 받은 뒤 스케줄을 불러온다
 
             while not self.stop_event.is_set():
                 msg = await ws.recv()
+                logger.debug("[WS] raw message: %s", msg)
                 try:
                     data = json.loads(msg)
                 except json.JSONDecodeError:
                     try:
                         data = ast.literal_eval(msg)
                     except Exception:
-                        print("[WS]", msg)
+                        logger.warning("[WS] Unparseable message: %s", msg)
                         continue
                 except Exception:
-                    print("[WS]", msg)
+                    logger.warning("[WS] Failed to decode message: %s", msg)
                     continue
 
-                if isinstance(data, dict) and data.get("type") == "rename":
+                if isinstance(data, dict):
+                    msg_type = data.get("type")
+                else:
+                    msg_type = None
+
+                if isinstance(data, dict) and msg_type == "rename":
                     new_id = data.get("device_id")
                     if new_id:
                         self.device_id = new_id
                         cfg["DEVICE_ID"] = new_id
                         save_config(cfg)
                         self.update_status(f"Renamed to {new_id}")
-                elif isinstance(data, dict) and data.get("type") == "config":
+                        logger.info("Device renamed to %s", new_id)
+                elif isinstance(data, dict) and msg_type == "config":
+                    logger.info("Received configuration payload")
                     enabled = data.get("IsEnabled", True)
                     if isinstance(enabled, str):
                         enabled = enabled.lower() in {"1", "true", "yes"}
@@ -453,17 +682,30 @@ class WSClient:
                                 self.start_vlc(url, monitor=idx)
                         else:
                             self.stop_vlc()
-                elif isinstance(data, dict) and data.get("type") == "test-broadcast":
+                elif isinstance(data, dict) and msg_type == "test-broadcast":
                     sid = data.get("schedule_id")
+                    logger.info("Received test-broadcast command for schedule %s", sid)
                     sch = next((s for s in self.schedules if s.get("ScheduleID") == sid), None)
                     if sch:
                         asyncio.create_task(self.play_schedule(sch))
-                elif isinstance(data, dict) and data.get("type") == "custom-broadcast":
+                        self._notify_test_status(
+                            sid,
+                            True,
+                            "서버에서 테스트 방송 명령을 수신했습니다.",
+                        )
+                    else:
+                        logger.warning("Received test-broadcast for unknown schedule %s", sid)
+                        self._notify_test_status(
+                            sid,
+                            False,
+                            "테스트 방송 대상 예약을 찾을 수 없습니다.",
+                        )
+                elif isinstance(data, dict) and msg_type == "custom-broadcast":
                     url = data.get("audio_url")
                     volume = data.get("volume")
                     if url:
                         asyncio.create_task(self.play_audio_url(url, volume))
-                elif isinstance(data, dict) and data.get("type") == "warning-broadcast":
+                elif isinstance(data, dict) and msg_type == "warning-broadcast":
                     wtype = int(data.get("warning_type", 0))
                     text = data.get("text", "")
                     volume = data.get("volume")
@@ -473,17 +715,20 @@ class WSClient:
                         )
                     elif wtype == 2 and text:
                         asyncio.create_task(self.play_audio_url(text, volume))
-                elif isinstance(data, dict) and data.get("type") == "play-tts":
+                elif isinstance(data, dict) and msg_type == "play-tts":
                     text = data.get("text", "")
                     speed = data.get("speed", 1.0)
                     pitch = data.get("pitch", 1.0)
                     volume = data.get("volume")
+                    logger.info(
+                        "Received play-tts command (len=%d)", len(text or "")
+                    )
                     asyncio.create_task(
                         self.play_tts_text(
                             text, speed=speed, pitch=pitch, volume=volume
                         )
                     )
-                elif isinstance(data, dict) and data.get("type") == "play-media":
+                elif isinstance(data, dict) and msg_type == "play-media":
                     mid = data.get("media_id")
                     if mid is not None:
                         mid_str = str(mid)
@@ -495,7 +740,7 @@ class WSClient:
                                 if str(it.get("MediaID") or it.get("media_id") or it.get("id")) == mid_str:
                                     self.start_vlc_playlist(items, start_index=i, monitor=m_idx)
                                     break
-                elif isinstance(data, dict) and data.get("type") == "playlist":
+                elif isinstance(data, dict) and msg_type == "playlist":
                     items = data.get("items")
                     if isinstance(items, list):
                         new_items = list(items)
@@ -538,9 +783,11 @@ class WSClient:
                                 continue
                             self.monitors[m_idx]["playlist_items"] = new_list
                             self.start_vlc_playlist(new_list, monitor=m_idx)
-                elif isinstance(data, dict) and data.get("type") == "refresh-schedules":
+                elif isinstance(data, dict) and msg_type == "refresh-schedules":
+                    logger.info("Received refresh-schedules command")
+                    self._notify_message("서버 요청으로 예약 목록을 갱신합니다.", False)
                     await self.update_schedules(start_scheduler=self.playmode != 2)
-                elif isinstance(data, dict) and data.get("type") == "update":
+                elif isinstance(data, dict) and msg_type == "update":
                     now = time.monotonic()
                     if now - self.last_update_time >= 30:
                         self.last_update_time = now
@@ -548,16 +795,60 @@ class WSClient:
                     else:
                         print("Ignoring duplicate update command")
                 else:
-                    print("[WS]", data)
-        except ConnectionClosed:
-            pass
+                    logger.info("Unhandled WS message: %s", data)
+        except ConnectionClosed as exc:
+            logger.warning("WebSocket closed: %s", exc)
+            self._notify_message("서버와의 연결이 종료되었습니다.", error=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("WebSocket handler error: %s", exc)
+            self._notify_message("서버와의 통신 중 오류가 발생했습니다.", error=True)
 
 
 def main():
     root = tk.Tk()
-    root.title("WS Client")
-    status_var = tk.StringVar(value="Starting")
-    tk.Label(root, textvariable=status_var, width=40).pack(padx=20, pady=20)
+    root.title("방송 플레이어 클라이언트")
+
+    status_var = tk.StringVar(value="시작 중…")
+    message_var = tk.StringVar(value="")
+
+    status_label = tk.Label(root, textvariable=status_var, anchor="w")
+    status_label.pack(fill="x", padx=20, pady=(20, 5))
+
+    message_label = tk.Label(root, textvariable=message_var, anchor="w", fg="#333333")
+    message_label.pack(fill="x", padx=20, pady=(0, 10))
+
+    schedule_frame = tk.LabelFrame(root, text="예약 목록")
+    schedule_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+
+    schedule_listbox = tk.Listbox(schedule_frame, height=8, activestyle="dotbox")
+    schedule_listbox.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+
+    schedule_scrollbar = tk.Scrollbar(schedule_frame, orient="vertical")
+    schedule_scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
+    schedule_listbox.config(yscrollcommand=schedule_scrollbar.set)
+    schedule_scrollbar.config(command=schedule_listbox.yview)
+
+    button_frame = tk.Frame(root)
+    button_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+    test_button = tk.Button(
+        button_frame,
+        text="선택한 예약 테스트 방송",
+        state="disabled",
+    )
+    test_button.pack(side="left")
+
+    refresh_button = tk.Button(button_frame, text="예약 새로고침")
+    refresh_button.pack(side="right")
+
+    tts_frame = tk.LabelFrame(root, text="즉시 TTS 재생")
+    tts_frame.pack(fill="both", expand=False, padx=20, pady=(0, 20))
+
+    tts_text = tk.Text(tts_frame, height=4, wrap="word")
+    tts_text.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+
+    tts_button = tk.Button(tts_frame, text="TTS 재생 요청")
+    tts_button.pack(anchor="e", padx=10, pady=(0, 10))
 
     def create_image():
         image = Image.new("RGB", (64, 64), "white")
@@ -579,8 +870,83 @@ def main():
 
     icon = None
 
+    schedule_items = []
+    client_ref = {"client": None}
+
+    def set_message(text: str, error: bool = False) -> None:
+        def _apply() -> None:
+            color = "#d32f2f" if error else ("#2e7d32" if text else "#333333")
+            message_label.config(fg=color)
+            message_var.set(text)
+
+        root.after(0, _apply)
+
+    def update_status(text: str) -> None:
+        root.after(0, status_var.set, text)
+
+    def handle_message(message: str, error: bool) -> None:
+        set_message(message, error)
+
+    def handle_schedules(schedules: list) -> None:
+        def _apply() -> None:
+            nonlocal schedule_items
+            schedule_items = list(schedules)
+            schedule_listbox.delete(0, tk.END)
+            for sch in schedule_items:
+                sid = sch.get("ScheduleID") or sch.get("schedule_id")
+                title = sch.get("Title") or sch.get("title") or "(제목 없음)"
+                time_str = sch.get("ScheduledTime") or sch.get("scheduled_time") or ""
+                display = f"[{sid}] {title}" if sid is not None else title
+                if time_str:
+                    display += f" - {time_str}"
+                schedule_listbox.insert(tk.END, display)
+            update_test_button_state()
+
+        root.after(0, _apply)
+
+    def handle_test_status(
+        schedule_id: Optional[int], success: bool, message: str
+    ) -> None:
+        set_message(message, error=not success)
+
+    def update_test_button_state(event=None) -> None:  # noqa: ANN001
+        state = "normal" if schedule_listbox.curselection() else "disabled"
+        test_button.config(state=state)
+
+    def refresh_schedules() -> None:
+        client = client_ref["client"]
+        if client:
+            client.refresh_schedules()
+
+    def send_test_broadcast() -> None:
+        selection = schedule_listbox.curselection()
+        if not selection:
+            set_message("예약을 먼저 선택해 주세요.", error=True)
+            return
+        schedule = schedule_items[selection[0]] if selection else None
+        if not schedule:
+            set_message("선택한 예약 정보를 찾을 수 없습니다.", error=True)
+            return
+        schedule_id = schedule.get("ScheduleID") or schedule.get("schedule_id")
+        client = client_ref["client"]
+        if client:
+            client.request_test_broadcast(schedule_id)
+
+    def send_tts_request() -> None:
+        text = tts_text.get("1.0", tk.END)
+        client = client_ref["client"]
+        if client:
+            client.request_play_tts(text)
+
+    schedule_listbox.bind("<<ListboxSelect>>", update_test_button_state)
+    test_button.config(command=send_test_broadcast)
+    refresh_button.config(command=refresh_schedules)
+    tts_button.config(command=send_tts_request)
+
     def on_close():
-        client.stop()
+        client = client_ref["client"]
+        if client:
+            client.stop()
         if icon:
             icon.stop()
         root.destroy()
@@ -596,10 +962,13 @@ def main():
 
         icon = pystray.Icon("ws_client", create_image(), "WS Client", menu=tray_menu)
 
-    def update_status(text):
-        root.after(0, status_var.set, text)
-
-    client = WSClient(update_status)
+    client = WSClient(
+        update_status,
+        on_schedules_updated=handle_schedules,
+        on_message=handle_message,
+        on_test_broadcast_status=handle_test_status,
+    )
+    client_ref["client"] = client
     client.start()
 
     if icon:
