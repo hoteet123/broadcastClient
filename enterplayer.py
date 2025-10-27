@@ -332,6 +332,17 @@ class WSClient:
 
     async def play_schedule(self, sch: dict) -> None:
         """Fetch TTS audio for a schedule and play it."""
+        volume = sch.get("Volume")
+        if volume is None:
+            volume = sch.get("volume")
+        if volume is not None:
+            try:
+                scheduler.set_volume(int(float(volume)))
+            except Exception as exc:  # noqa: BLE001
+                self.log(
+                    f"Failed to set schedule volume {volume!r}: {exc}",
+                    logging.WARNING,
+                )
         audio = await scheduler.tts_request(
             sch.get("TTSContent", ""),
             speed=sch.get("Speed", 1.0),

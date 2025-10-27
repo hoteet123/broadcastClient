@@ -193,6 +193,17 @@ async def scheduler_loop(
                     print(
                         f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}"
                     )
+                    volume = sch.get("Volume")
+                    if volume is None:
+                        volume = sch.get("volume")
+                    if volume is not None:
+                        try:
+                            set_volume(int(float(volume)))
+                        except Exception as exc:  # noqa: BLE001
+                            print(
+                                "Failed to set schedule volume "
+                                f"{volume!r}: {exc}"
+                            )
                     audio = await tts_request(
                         sch.get("TTSContent", ""),
                         speed=sch.get("Speed", 1.0),
