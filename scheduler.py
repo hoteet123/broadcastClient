@@ -193,6 +193,17 @@ async def scheduler_loop(
                     print(
                         f"Playing schedule {sch.get('ScheduleID')}: {sch.get('Title')}"
                     )
+                    volume = sch.get("Volume")
+                    if volume is None:
+                        volume = sch.get("volume")
+                    if volume is not None:
+                        try:
+                            set_volume(int(volume))
+                        except (TypeError, ValueError):
+                            print(
+                                f"Invalid volume value {volume!r} for schedule {sch.get('ScheduleID')}"
+                            )
+
                     audio = await tts_request(
                         sch.get("TTSContent", ""),
                         speed=sch.get("Speed", 1.0),
