@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import datetime as dt
 import json
 import logging
 import threading
@@ -91,6 +92,13 @@ def load_config():
 def save_config(config: dict) -> None:
     """Write the configuration dictionary to CFG_PATH."""
     CFG_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+def _json_default(obj: Any) -> Any:
+    """Return JSON-serializable representation for common non-JSON types."""
+    if isinstance(obj, (dt.datetime, dt.date, dt.time)):
+        return obj.isoformat()
+    return str(obj)
 
 
 cfg = load_config()
@@ -869,7 +877,9 @@ def main():
         text_widget.configure(state="normal")
         text_widget.delete("1.0", tk.END)
         if schedule:
-            detail = json.dumps(schedule, ensure_ascii=False, indent=2)
+            detail = json.dumps(
+                schedule, ensure_ascii=False, indent=2, default=_json_default
+            )
             text_widget.insert("1.0", detail)
         else:
             text_widget.insert("1.0", "예약을 선택하면 상세 정보가 표시됩니다.")
