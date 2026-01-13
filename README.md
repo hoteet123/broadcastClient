@@ -60,12 +60,10 @@ the VLC window.  Each entry should contain `ImageUrl`, `X`, `Y`, `Width`,
 `Height`, `GuiKind`, `GuiOrder` and `Monitor` values.  `GuiKind` can be
 `image`, `video` or `url` and determines whether an image, video or embedded
 web view is shown on the specified monitor.  `GuiOrder` starts at `0` and lower
-numbers are placed above higher values, allowing precise control of the
-stacking order.  GIF images animate and transparency is respected.
-
-For `url` overlays on Windows the helper scripts try to launch Microsoft Edge
-or Chrome in app mode for better performance. If no supported browser is found,
-they fall back to the built in tkinter web view.
+numbers are placed above higher values.  Overlays are processed from highest to
+lowest order with each window lifted so lower numbers appear on top, allowing
+precise control of the stacking order.  GIF images animate and transparency is
+respected.
 
 The client also handles playlist messages. When a playlist is received it
 is passed to `vlc_playlist.py` for borderless playback. A subsequent
